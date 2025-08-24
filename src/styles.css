@@ -599,3 +599,55 @@ body {
 .canvas-link-button.active svg {
     stroke: white;
 }
+
+/* Crop mode styles */
+.crop-mode-toolbar {
+    position: fixed;
+    bottom: 140px; /* Above thumbnail bar */
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2d3748;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    z-index: 10000;
+}
+
+.crop-mode-toolbar button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.crop-mode-toolbar .apply-crop {
+    background: #48bb78;
+    color: white;
+}
+
+.crop-mode-toolbar .apply-crop:hover {
+    background: #38a169;
+    transform: translateY(-1px);
+}
+
+.crop-mode-toolbar .cancel-crop {
+    background: #e53e3e;
+    color: white;
+}
+
+.crop-mode-toolbar .cancel-crop:hover {
+    background: #c53030;
+    transform: translateY(-1px);
+}
+
+.crop-mode-toolbar .crop-info {
+    color: white;
+    font-size: 13px;
+    margin: 0 10px;
+}
