@@ -373,9 +373,9 @@ export class CanvasManager {
                 const localX = selectedElement.x - this.offsetX;
                 const localY = selectedElement.y - this.offsetY;
                 if (localPoint.x >= localX + selectedElement.cropX &&
-                    localPoint.x <= localX + selectedElement.cropX + selectedElement.cropWidth &&
-                    localPoint.y >= localY + selectedElement.cropY &&
-                    localPoint.y <= localY + selectedElement.cropY + selectedElement.cropHeight) {
+                    localPoint.x <= localX + selectedElement.cropX + (selectedElement.cropWidth || 0) &&
+                    localPoint.y >= localY + (selectedElement.cropY || 0) &&
+                    localPoint.y <= localY + (selectedElement.cropY || 0) + (selectedElement.cropHeight || 0)) {
                     this.cropDragging = true;
                     this.cropStartPoint = localPoint;
                     return;
@@ -431,15 +431,19 @@ export class CanvasManager {
         const handleSize = 10;
         const halfSize = handleSize / 2;
         
+        const cropY = element.cropY || 0;
+        const cropWidth = element.cropWidth || 0;
+        const cropHeight = element.cropHeight || 0;
+        
         const handles = [
-            { x: localX + element.cropX, y: localY + element.cropY, type: 'nw' },
-            { x: localX + element.cropX + element.cropWidth/2, y: localY + element.cropY, type: 'n' },
-            { x: localX + element.cropX + element.cropWidth, y: localY + element.cropY, type: 'ne' },
-            { x: localX + element.cropX + element.cropWidth, y: localY + element.cropY + element.cropHeight/2, type: 'e' },
-            { x: localX + element.cropX + element.cropWidth, y: localY + element.cropY + element.cropHeight, type: 'se' },
-            { x: localX + element.cropX + element.cropWidth/2, y: localY + element.cropY + element.cropHeight, type: 's' },
-            { x: localX + element.cropX, y: localY + element.cropY + element.cropHeight, type: 'sw' },
-            { x: localX + element.cropX, y: localY + element.cropY + element.cropHeight/2, type: 'w' }
+            { x: localX + element.cropX, y: localY + cropY, type: 'nw' },
+            { x: localX + element.cropX + cropWidth/2, y: localY + cropY, type: 'n' },
+            { x: localX + element.cropX + cropWidth, y: localY + cropY, type: 'ne' },
+            { x: localX + element.cropX + cropWidth, y: localY + cropY + cropHeight/2, type: 'e' },
+            { x: localX + element.cropX + cropWidth, y: localY + cropY + cropHeight, type: 'se' },
+            { x: localX + element.cropX + cropWidth/2, y: localY + cropY + cropHeight, type: 's' },
+            { x: localX + element.cropX, y: localY + cropY + cropHeight, type: 'sw' },
+            { x: localX + element.cropX, y: localY + cropY + cropHeight/2, type: 'w' }
         ];
         
         for (const handle of handles) {
@@ -476,8 +480,8 @@ export class CanvasManager {
         let newCropY = element.cropY + dy;
         
         // Constrain within image bounds
-        newCropX = Math.max(0, Math.min(newCropX, element.width - element.cropWidth));
-        newCropY = Math.max(0, Math.min(newCropY, element.height - element.cropHeight));
+        newCropX = Math.max(0, Math.min(newCropX, element.width - (element.cropWidth || 0)));
+        newCropY = Math.max(0, Math.min(newCropY, element.height - (element.cropHeight || 0)));
         
         this.globalManager.updateElement(element.id, {
             cropX: newCropX,
@@ -594,9 +598,9 @@ export class CanvasManager {
                         const localY = selectedElement.y - this.offsetY;
                         if (selectedElement.cropX !== undefined &&
                             localPoint.x >= localX + selectedElement.cropX &&
-                            localPoint.x <= localX + selectedElement.cropX + selectedElement.cropWidth &&
-                            localPoint.y >= localY + selectedElement.cropY &&
-                            localPoint.y <= localY + selectedElement.cropY + selectedElement.cropHeight) {
+                            localPoint.x <= localX + selectedElement.cropX + (selectedElement.cropWidth || 0) &&
+                            localPoint.y >= localY + (selectedElement.cropY || 0) &&
+                            localPoint.y <= localY + (selectedElement.cropY || 0) + (selectedElement.cropHeight || 0)) {
                             this.canvas.style.cursor = 'move';
                         } else {
                             this.canvas.style.cursor = 'default';
@@ -620,17 +624,17 @@ export class CanvasManager {
         }
         
         const rect = this.canvas.getBoundingClientRect();
-        const localPoint = {
+        const currentLocalPoint = {
             x: (e.clientX - rect.left) / this.scale,
             y: (e.clientY - rect.top) / this.scale
         };
-        const globalPoint = this.localToGlobal(localPoint.x, localPoint.y);
+        const currentGlobalPoint = this.localToGlobal(currentLocalPoint.x, currentLocalPoint.y);
         
         if (this.resizeState.isResizing && this.resizeState.element) {
-            this.handleResize(globalPoint);
+            this.handleResize(currentGlobalPoint);
         } else if (this.dragState.isDragging && this.dragState.element) {
-            const dx = globalPoint.x - this.dragState.startPoint.x;
-            const dy = globalPoint.y - this.dragState.startPoint.y;
+            const dx = currentGlobalPoint.x - this.dragState.startPoint.x;
+            const dy = currentGlobalPoint.y - this.dragState.startPoint.y;
             
             let newX = this.dragState.elementStartPoint.x + dx;
             let newY = this.dragState.elementStartPoint.y + dy;
@@ -2083,9 +2087,7 @@ export class CanvasManager {
             if (!selectedElement.originalWidth) {
                 this.globalManager.updateElement(selectedElement.id, {
                     originalWidth: selectedElement.width,
-                    originalHeight: selectedElement.height,
-                    originalImageWidth: selectedElement.imageElement?.naturalWidth || selectedElement.width,
-                    originalImageHeight: selectedElement.imageElement?.naturalHeight || selectedElement.height
+                    originalHeight: selectedElement.height
                 });
             }
             
