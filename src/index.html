@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Design Tool</title>
+</head>
+<body>
+    <div id="app">
+        <div class="toolbar">
+            <button id="addCanvasBtn" class="tool-btn primary">➕ 캔버스 추가</button>
+            <div class="toolbar-separator"></div>
+            <button id="addTextBtn" class="tool-btn">텍스트 추가</button>
+            <label for="imageUpload" class="tool-btn">이미지 업로드</label>
+            <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+            <div class="resolution-controls">
+                <label>캔버스 크기:</label>
+                <select id="resolutionPreset" class="resolution-select">
+                    <option value="custom">Custom</option>
+                    <option value="800x600" selected>800×600</option>
+                    <option value="1024x768">1024×768</option>
+                    <option value="1280x720">1280×720 (HD)</option>
+                    <option value="1920x1080">1920×1080 (FHD)</option>
+                    <option value="1080x1920">1080×1920 (세로)</option>
+                    <option value="1080x1080">1080×1080 (정사각형)</option>
+                </select>
+                <input type="number" id="canvasWidth" value="800" min="100" max="3000" step="10">
+                <span>×</span>
+                <input type="number" id="canvasHeight" value="600" min="100" max="3000" step="10">
+            </div>
+            <button id="clearBtn" class="tool-btn danger">전체 삭제</button>
+        </div>
+        <div class="text-toolbar" id="textToolbar" style="display: none;">
+            <div class="text-controls">
+                <select id="fontFamily" class="text-select">
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Verdana">Verdana</option>
+                    <option value="Impact">Impact</option>
+                    <option value="Comic Sans MS">Comic Sans MS</option>
+                </select>
+                <input type="number" id="fontSize" value="24" min="8" max="200" class="font-size-input">
+                <button id="boldBtn" class="format-btn">B</button>
+                <button id="italicBtn" class="format-btn italic">I</button>
+                <div class="align-group">
+                    <button id="alignLeft" class="align-btn active">⬅</button>
+                    <button id="alignCenter" class="align-btn">⬌</button>
+                    <button id="alignRight" class="align-btn">➡</button>
+                </div>
+                <input type="color" id="textColor" value="#2d3748" class="color-picker">
+            </div>
+        </div>
+        <div class="canvas-area">
+            <div class="canvas-container" id="canvasContainer">
+                <!-- Canvases will be added here dynamically -->
+            </div>
+            <div id="contextMenu" class="context-menu" style="display: none;">
+                <div class="context-menu-item" data-action="copy">
+                    <span>📑</span> 복사
+                    <span class="shortcut">Ctrl+C</span>
+                </div>
+                <div class="context-menu-item" data-action="paste">
+                    <span>📌</span> 붙여넣기
+                    <span class="shortcut">Ctrl+V</span>
+                </div>
+                <div class="context-menu-item" data-action="duplicate">
+                    <span>📋</span> 복제
+                    <span class="shortcut">Ctrl+D</span>
+                </div>
+                <div class="context-menu-separator"></div>
+                <div class="context-menu-item has-submenu">
+                    <span>📊</span> 레이어
+                    <span class="submenu-arrow">▶</span>
+                    <div class="context-submenu">
+                        <div class="context-menu-item" data-action="bring-front">
+                            <span>⬆</span> 맨 앞으로
+                        </div>
+                        <div class="context-menu-item" data-action="bring-forward">
+                            <span>↑</span> 앞으로
+                        </div>
+                        <div class="context-menu-item" data-action="send-backward">
+                            <span>↓</span> 뒤로
+                        </div>
+                        <div class="context-menu-item" data-action="send-back">
+                            <span>⬇</span> 맨 뒤로
+                        </div>
+                    </div>
+                </div>
+                <div class="context-menu-separator"></div>
+                <div class="context-menu-item" data-action="crop">
+                    <span>✂️</span> 이미지 크롭 모드
+                </div>
+                <div class="context-menu-item" data-action="apply-crop">
+                    <span>✅</span> 크롭 적용
+                    <span class="shortcut">Enter</span>
+                </div>
+                <div class="context-menu-separator"></div>
+                <div class="context-menu-item" data-action="delete">
+                    <span>🗑️</span> 삭제
+                    <span class="shortcut">Delete</span>
+                </div>
+            </div>
+        </div>
+        <div class="thumbnail-bar" id="thumbnailBar">
+            <div class="thumbnail-container" id="thumbnailContainer">
+                <!-- Thumbnails will be added here dynamically -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>
