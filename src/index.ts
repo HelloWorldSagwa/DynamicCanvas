@@ -85,6 +85,24 @@ class App {
             }
         });
 
+        // Crop button
+        const cropBtn = document.getElementById('cropBtn') as HTMLButtonElement;
+        cropBtn?.addEventListener('click', () => {
+            const activeCanvas = this.multiCanvasManager.getActiveCanvas();
+            if (activeCanvas) {
+                activeCanvas.startCropMode();
+            }
+        });
+
+        // Show/hide crop button when image is selected
+        document.addEventListener('selection-changed', (e) => {
+            const customEvent = e as CustomEvent;
+            const selectedElement = customEvent.detail?.element;
+            if (cropBtn) {
+                cropBtn.style.display = selectedElement?.type === 'image' ? 'block' : 'none';
+            }
+        });
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 // 텍스트 편집 중이면 삭제 이벤트 무시

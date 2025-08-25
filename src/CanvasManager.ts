@@ -414,10 +414,22 @@ export class CanvasManager {
                     elementStartPoint: { x: element.x, y: element.y }
                 };
                 this.updateTextToolbar();
+                
+                // Dispatch selection changed event
+                const event = new CustomEvent('selection-changed', {
+                    detail: { element: element }
+                });
+                document.dispatchEvent(event);
             }
         } else {
             this.globalManager.setSelectedElement(null);
             this.updateTextToolbar();
+            
+            // Dispatch selection changed event with null
+            const event = new CustomEvent('selection-changed', {
+                detail: { element: null }
+            });
+            document.dispatchEvent(event);
         }
         
         this.render();
@@ -858,11 +870,8 @@ export class CanvasManager {
         if (element) {
             if (element.type === 'text') {
                 this.startInlineEditing(element);
-            } else if (element.type === 'image') {
-                // Double-click on image activates crop mode
-                this.globalManager.setSelectedElement(element.id);
-                this.toggleCropMode();
             }
+            // Removed double-click crop mode - crop should be initiated via button/menu only
         }
     }
     
@@ -1590,6 +1599,13 @@ export class CanvasManager {
         this.render();
     }
 
+    public startCropMode(): void {
+        const selectedElement = this.globalManager.getSelectedElement();
+        if (selectedElement && selectedElement.type === 'image') {
+            this.toggleCropMode();
+        }
+    }
+    
     public deleteSelected(): void {
         const selectedElement = this.globalManager.getSelectedElement();
         if (selectedElement) {
@@ -2091,12 +2107,13 @@ export class CanvasManager {
                 });
             }
             
-            // Initialize crop area to center 80% of image if not set
+            // Initialize crop area to full image with small padding if not set
             if (selectedElement.cropX === undefined) {
-                const cropWidth = selectedElement.width * 0.8;
-                const cropHeight = selectedElement.height * 0.8;
-                const cropX = (selectedElement.width - cropWidth) / 2;
-                const cropY = (selectedElement.height - cropHeight) / 2;
+                const padding = 10;
+                const cropX = padding;
+                const cropY = padding;
+                const cropWidth = selectedElement.width - (padding * 2);
+                const cropHeight = selectedElement.height - (padding * 2);
                 
                 this.globalManager.updateElement(selectedElement.id, {
                     cropX: cropX,
@@ -2132,7 +2149,7 @@ export class CanvasManager {
         
         const applyBtn = document.createElement('button');
         applyBtn.className = 'apply-crop';
-        applyBtn.textContent = '✅ 크롭 적용';
+        applyBtn.textContent = '✅ 적용';
         applyBtn.onclick = () => this.applyCrop();
         
         const cancelBtn = document.createElement('button');
@@ -2147,7 +2164,7 @@ export class CanvasManager {
         
         const infoSpan = document.createElement('span');
         infoSpan.className = 'crop-info';
-        infoSpan.textContent = '드래그하여 크롭 영역을 조절하세요';
+        infoSpan.textContent = '크롭 영역 조절';
         
         toolbar.appendChild(applyBtn);
         toolbar.appendChild(infoSpan);
