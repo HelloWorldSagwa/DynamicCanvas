@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Canvas Grid Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .grid-info {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .grid-visual {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            grid-template-rows: repeat(3, 100px);
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .grid-cell {
+            border: 2px dashed #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #999;
+            position: relative;
+        }
+        .grid-cell.occupied {
+            border: 2px solid #3182ce;
+            background: #e6f2ff;
+            color: #333;
+        }
+        .link-indicator {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #4ade80;
+            border-radius: 50%;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .link-indicator.inactive {
+            background: #ef4444;
+        }
+        .link-indicator.top { top: -10px; left: 50%; transform: translateX(-50%); }
+        .link-indicator.right { right: -10px; top: 50%; transform: translateY(-50%); }
+        .link-indicator.bottom { bottom: -10px; left: 50%; transform: translateX(-50%); }
+        .link-indicator.left { left: -10px; top: 50%; transform: translateY(-50%); }
+        button {
+            background: #3182ce;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="grid-info">
+        <h2>Canvas Grid Test</h2>
+        <div class="status" id="status">Ready to test...</div>
+        
+        <div>
+            <button onclick="createGrid()">Create 2x2 Grid</button>
+            <button onclick="testLinks()">Test All Links</button>
+            <button onclick="addTextElement()">Add Text to Canvas 1</button>
+            <button onclick="moveElement()">Move Text Between Canvases</button>
+        </div>
+        
+        <div class="grid-visual" id="gridVisual">
+            <!-- Grid cells will be added here -->
+        </div>
+        
+        <div id="linkStatus"></div>
+    </div>
+
+    <script>
+        // Initialize grid visual
+        function initGridVisual() {
+            const grid = document.getElementById('gridVisual');
+            for (let row = 0; row < 3; row++) {
+                for (let col = 0; col < 3; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    cell.id = `cell-${row}-${col}`;
+                    cell.textContent = `(${row},${col})`;
+                    grid.appendChild(cell);
+                }
+            }
+        }
+        
+        function updateStatus(msg) {
+            document.getElementById('status').textContent = msg;
+            console.log(msg);
+        }
+        
+        function updateGridVisual() {
+            // Clear all cells first
+            document.querySelectorAll('.grid-cell').forEach(cell => {
+                cell.className = 'grid-cell';
+                cell.innerHTML = cell.textContent;
+            });
+            
+            // Get grid manager from parent window
+            const gridManager = window.opener?.canvasGridManager;
+            if (!gridManager) {
+                updateStatus('Grid manager not found');
+                return;
+            }
+            
+            // Update cells based on canvas positions
+            const canvasPositions = gridManager.canvasPositions;
+            canvasPositions.forEach((pos, canvasId) => {
+                const cell = document.getElementById(`cell-${pos.row}-${pos.col}`);
+                if (cell) {
+                    cell.className = 'grid-cell occupied';
+                    cell.innerHTML = `Canvas<br>${canvasId.substr(-4)}`;
+                    
+                    // Add link indicators
+                    const adjacent = gridManager.getAdjacentCanvases(canvasId);
+                    adjacent.forEach((adjId, direction) => {
+                        const isLinked = gridManager.areCanvasesLinked(canvasId, adjId);
+                        const indicator = document.createElement('div');
+                        indicator.className = `link-indicator ${direction} ${isLinked ? '' : 'inactive'}`;
+                        indicator.textContent = isLinked ? '✓' : '✗';
+                        cell.appendChild(indicator);
+                    });
+                }
+            });
+        }
+        
+        function createGrid() {
+            updateStatus('Creating 2x2 canvas grid...');
+            
+            const win = window.opener;
+            if (!win) {
+                updateStatus('Please open this page from the main application');
+                return;
+            }
+            
+            const addRight = win.document.getElementById('addCanvasBtn');
+            const addBelow = win.document.getElementById('addCanvasBelowBtn');
+            
+            // Add canvas to the right (0,1)
+            addRight.click();
+            setTimeout(() => {
+                // Select first canvas
+                win.document.querySelector('.canvas-wrapper').click();
+                setTimeout(() => {
+                    // Add canvas below (1,0)
+                    addBelow.click();
+                    setTimeout(() => {
+                        // Add canvas to the right of bottom-left (1,1)
+                        addRight.click();
+                        setTimeout(() => {
+                            updateStatus('2x2 grid created!');
+                            updateGridVisual();
+                            checkForDuplicates();
+                        }, 500);
+                    }, 500);
+                }, 500);
+            }, 500);
+        }
+        
+        function checkForDuplicates() {
+            const win = window.opener;
+            const linkButtons = win.document.querySelectorAll('.canvas-link-button');
+            const buttonIds = Array.from(linkButtons).map(btn => btn.id);
+            const uniqueIds = new Set(buttonIds);
+            
+            const linkStatus = document.getElementById('linkStatus');
+            linkStatus.innerHTML = `
+                <h3>Link Button Status:</h3>
+                <p>Total buttons: ${linkButtons.length}</p>
+                <p>Unique IDs: ${uniqueIds.size}</p>
+                <p>${buttonIds.length === uniqueIds.size ? '✓ No duplicates' : '✗ DUPLICATES FOUND!'}</p>
+                <details>
+                    <summary>Button Details</summary>
+                    <ul>
+                        ${Array.from(linkButtons).map(btn => {
+                            const classes = Array.from(btn.classList);
+                            const direction = classes.find(c => c.startsWith('link-'))?.replace('link-', '') || 'unknown';
+                            return `<li>${btn.id}: ${direction} (${btn.classList.contains('active') ? 'active' : 'inactive'})</li>`;
+                        }).join('')}
+                    </ul>
+                </details>
+            `;
+        }
+        
+        function testLinks() {
+            updateStatus('Testing all link toggles...');
+            const win = window.opener;
+            const linkButtons = win.document.querySelectorAll('.canvas-link-button');
+            
+            linkButtons.forEach((btn, index) => {
+                setTimeout(() => {
+                    btn.click();
+                    updateGridVisual();
+                    updateStatus(`Toggled link ${index + 1}/${linkButtons.length}`);
+                    
+                    if (index === linkButtons.length - 1) {
+                        setTimeout(() => {
+                            updateStatus('All links tested!');
+                            checkForDuplicates();
+                        }, 500);
+                    }
+                }, index * 200);
+            });
+        }
+        
+        function addTextElement() {
+            const win = window.opener;
+            if (!win) return;
+            
+            // Select first canvas
+            win.document.querySelector('.canvas-wrapper').click();
+            
+            // Add text
+            setTimeout(() => {
+                const addTextBtn = win.document.getElementById('addTextBtn');
+                addTextBtn.click();
+                updateStatus('Text element added to first canvas');
+            }, 200);
+        }
+        
+        function moveElement() {
+            updateStatus('Testing element movement between canvases...');
+            // This would require simulating drag events
+            // For now, just log the instruction
+            updateStatus('Please manually drag the text element between canvases to test linking');
+        }
+        
+        // Initialize on load
+        initGridVisual();
+        
+        // Check if opened from main app
+        if (!window.opener) {
+            updateStatus('Please open this page from the main application using: window.open("test_grid.html")');
+        } else {
+            updateStatus('Connected to main application. Ready to test!');
+            updateGridVisual();
+        }
+    </script>
+</body>
+</html>

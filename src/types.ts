@@ -22,6 +22,15 @@ export interface CanvasElement {
     cropHeight?: number;
     originalWidth?: number;
     originalHeight?: number;
+    // Store original image for restore functionality
+    originalImageElement?: HTMLImageElement;
+    originalContent?: string;
+    hasCropApplied?: boolean;  // Track if crop has been applied
+    // Store last applied crop coordinates for re-editing
+    lastCropX?: number;
+    lastCropY?: number;
+    lastCropWidth?: number;
+    lastCropHeight?: number;
 }
 
 export interface CanvasData {

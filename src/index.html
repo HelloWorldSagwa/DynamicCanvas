@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canvas Design Tool</title>
+    <title>Dynamic Canvas - Studio5</title>
 </head>
 <body>
     <div id="app">
         <div class="toolbar">
-            <button id="addCanvasBtn" class="tool-btn primary">➕ 캔버스 추가</button>
+            <button id="addCanvasBtn" class="tool-btn primary">➕ 캔버스 추가 →</button>
+            <button id="addCanvasBelowBtn" class="tool-btn primary">➕ 캔버스 추가 ↓</button>
             <div class="toolbar-separator"></div>
             <button id="addTextBtn" class="tool-btn">텍스트 추가</button>
             <label for="imageUpload" class="tool-btn">이미지 업로드</label>
@@ -28,6 +29,11 @@
                 <input type="number" id="canvasWidth" value="800" min="100" max="3000" step="10">
                 <span>×</span>
                 <input type="number" id="canvasHeight" value="600" min="100" max="3000" step="10">
+            </div>
+            <div class="zoom-controls">
+                <label>🔍</label>
+                <input type="range" id="zoomSlider" min="10" max="200" value="100" step="5">
+                <span id="zoomValue">100%</span>
             </div>
             <button id="clearBtn" class="tool-btn danger">전체 삭제</button>
         </div>

@@ -74,6 +74,10 @@ export class CanvasManager {
         this.render();
     }
     
+    public getOffset(): { x: number, y: number } {
+        return { x: this.offsetX, y: this.offsetY };
+    }
+    
     // Convert global coordinates to local canvas coordinates
     private globalToLocal(globalX: number, globalY: number): Point {
         return {

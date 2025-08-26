@@ -1,5 +1,5 @@
 {
-  "name": "appstorescreenshot",
+  "name": "dynamic-canvas",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -7,10 +7,10 @@
     "build": "webpack",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "keywords": ["canvas", "design", "multi-canvas", "dynamic-linking"],
+  "author": "Studio5",
+  "license": "Proprietary - © Studio5. All rights reserved.",
+  "description": "Dynamic Canvas - A multi-canvas design tool with dynamic linking capabilities",
   "devDependencies": {
     "css-loader": "^7.1.2",
     "html-webpack-plugin": "^5.6.4",

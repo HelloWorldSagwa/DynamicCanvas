@@ -3,17 +3,46 @@ import { CanvasElement } from './types';
 export class GlobalElementManager {
     private elements: Map<string, CanvasElement> = new Map();
     private selectedElementId: string | null = null;
+    private changeListeners: Set<() => void> = new Set();
     
-    constructor() {}
+    constructor() {
+        console.log('[GLOBAL] GlobalElementManager initialized');
+    }
     
     public addElement(element: CanvasElement): void {
+        console.log(`[GLOBAL] Adding element ${element.id} at global position (${element.x}, ${element.y})`);
         this.elements.set(element.id, element);
+        this.notifyChange();
+    }
+    
+    // Subscribe to element changes
+    public subscribe(callback: () => void): void {
+        this.changeListeners.add(callback);
+    }
+    
+    // Unsubscribe from element changes
+    public unsubscribe(callback: () => void): void {
+        this.changeListeners.delete(callback);
+    }
+    
+    // Notify all subscribers of changes
+    private notifyChange(): void {
+        console.log(`[GLOBAL] Notifying ${this.changeListeners.size} subscribers of change`);
+        this.changeListeners.forEach(callback => callback());
+        
+        // Also notify sync manager if it exists
+        const syncManager = (window as any).canvasSyncManager;
+        if (syncManager) {
+            syncManager.notifyCanvasUpdate();
+        }
     }
     
     public removeElement(elementId: string): void {
-        this.elements.delete(elementId);
-        if (this.selectedElementId === elementId) {
-            this.selectedElementId = null;
+        if (this.elements.delete(elementId)) {
+            if (this.selectedElementId === elementId) {
+                this.selectedElementId = null;
+            }
+            this.notifyChange();
         }
     }
     
@@ -29,10 +58,14 @@ export class GlobalElementManager {
         const element = this.elements.get(elementId);
         if (element) {
             Object.assign(element, updates);
+            this.notifyChange();
         }
     }
     
     public getElementsForCanvas(canvasOffsetX: number, canvasOffsetY: number, canvasWidth: number, canvasHeight: number): CanvasElement[] {
+        // Return ALL elements when sync is enabled (handled by CanvasSyncManager)
+        // Individual canvas will decide what to render based on sync state
+        
         const visibleElements: CanvasElement[] = [];
         
         this.elements.forEach(element => {
@@ -41,6 +74,8 @@ export class GlobalElementManager {
             const elementBottom = element.y + element.height;
             const canvasRight = canvasOffsetX + canvasWidth;
             const canvasBottom = canvasOffsetY + canvasHeight;
+            
+            // Simple intersection check without verbose logging
             
             // Check for intersection
             if (element.x < canvasRight && 

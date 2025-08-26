@@ -8,11 +8,13 @@
 <body>
     <div id="app">
         <div class="toolbar">
-            <button id="addCanvasBtn" class="tool-btn primary">➕ 캔버스 추가</button>
+            <button id="addCanvasBtn" class="tool-btn primary">➕ 캔버스 추가 →</button>
+            <button id="addCanvasBelowBtn" class="tool-btn primary">➕ 캔버스 추가 ↓</button>
             <div class="toolbar-separator"></div>
             <button id="addTextBtn" class="tool-btn">텍스트 추가</button>
             <label for="imageUpload" class="tool-btn">이미지 업로드</label>
             <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+            <button id="cropBtn" class="tool-btn" style="display: none;">✂️ 크롭</button>
             <div class="resolution-controls">
                 <label>캔버스 크기:</label>
                 <select id="resolutionPreset" class="resolution-select">
@@ -28,7 +30,13 @@
                 <span>×</span>
                 <input type="number" id="canvasHeight" value="600" min="100" max="3000" step="10">
             </div>
+            <div class="zoom-controls">
+                <label>🔍</label>
+                <input type="range" id="zoomSlider" min="10" max="200" value="100" step="5">
+                <span id="zoomValue">100%</span>
+            </div>
             <button id="clearBtn" class="tool-btn danger">전체 삭제</button>
+            <button id="syncToggleBtn" class="tool-btn sync-btn">🔗 동기화: OFF</button>
         </div>
         <div class="text-toolbar" id="textToolbar" style="display: none;">
             <div class="text-controls">
@@ -88,6 +96,14 @@
                             <span>⬇</span> 맨 뒤로
                         </div>
                     </div>
+                </div>
+                <div class="context-menu-separator"></div>
+                <div class="context-menu-item" data-action="crop">
+                    <span>✂️</span> 이미지 크롭 모드
+                </div>
+                <div class="context-menu-item" data-action="apply-crop">
+                    <span>✅</span> 크롭 적용
+                    <span class="shortcut">Enter</span>
                 </div>
                 <div class="context-menu-separator"></div>
                 <div class="context-menu-item" data-action="delete">

@@ -6,6 +6,8 @@ class App {
 
     constructor() {
         this.multiCanvasManager = new MultiCanvasManager();
+        // Make multiCanvasManager globally accessible for canvases
+        (window as any).multiCanvasManager = this.multiCanvasManager;
         this.setupEventListeners();
         
         // Update thumbnails periodically
@@ -22,6 +24,8 @@ class App {
         const canvasWidth = document.getElementById('canvasWidth') as HTMLInputElement;
         const canvasHeight = document.getElementById('canvasHeight') as HTMLInputElement;
         const resolutionPreset = document.getElementById('resolutionPreset') as HTMLSelectElement;
+        const zoomSlider = document.getElementById('zoomSlider') as HTMLInputElement;
+        const zoomValue = document.getElementById('zoomValue') as HTMLSpanElement;
 
         addTextBtn?.addEventListener('click', () => {
             const activeCanvas = this.multiCanvasManager.getActiveCanvas();
@@ -39,7 +43,10 @@ class App {
                     const imageUrl = event.target?.result as string;
                     const activeCanvas = this.multiCanvasManager.getActiveCanvas();
                     if (activeCanvas) {
+                        console.log(`[APP] Adding image to active canvas`);
                         activeCanvas.addImage(imageUrl);
+                    } else {
+                        console.error(`[APP] No active canvas to add image to`);
                     }
                 };
                 reader.readAsDataURL(file);
@@ -85,6 +92,15 @@ class App {
             }
         });
 
+        // Zoom controls
+        zoomSlider?.addEventListener('input', () => {
+            const zoom = parseInt(zoomSlider.value);
+            if (zoomValue) {
+                zoomValue.textContent = `${zoom}%`;
+            }
+            this.multiCanvasManager.setZoom(zoom / 100);
+        });
+
         // Crop button
         const cropBtn = document.getElementById('cropBtn') as HTMLButtonElement;
         cropBtn?.addEventListener('click', () => {
@@ -124,30 +140,74 @@ class App {
             e.preventDefault();
             e.stopPropagation();
             canvasContainer.classList.add('dragging');
+            
+            // Add visual feedback to the canvas being hovered
+            const targetCanvas = this.multiCanvasManager.getCanvasAtPosition(e.clientX, e.clientY);
+            
+            // Remove drag-over class from all canvases
+            document.querySelectorAll('.canvas-wrapper').forEach(wrapper => {
+                wrapper.classList.remove('drag-over');
+            });
+            
+            // Add drag-over class to target canvas
+            if (targetCanvas) {
+                const canvases = this.multiCanvasManager.getAllCanvases();
+                for (const [id, canvas] of canvases) {
+                    if (canvas === targetCanvas) {
+                        const wrapper = document.getElementById(`wrapper-${id}`);
+                        wrapper?.classList.add('drag-over');
+                        break;
+                    }
+                }
+            }
         });
 
         canvasContainer?.addEventListener('dragleave', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            canvasContainer.classList.remove('dragging');
+            
+            // Check if we're actually leaving the container
+            const rect = canvasContainer.getBoundingClientRect();
+            if (e.clientX <= rect.left || e.clientX >= rect.right ||
+                e.clientY <= rect.top || e.clientY >= rect.bottom) {
+                canvasContainer.classList.remove('dragging');
+                document.querySelectorAll('.canvas-wrapper').forEach(wrapper => {
+                    wrapper.classList.remove('drag-over');
+                });
+            }
         });
 
         canvasContainer?.addEventListener('drop', (e) => {
             e.preventDefault();
             e.stopPropagation();
             canvasContainer.classList.remove('dragging');
+            
+            // Remove drag-over class from all canvases
+            document.querySelectorAll('.canvas-wrapper').forEach(wrapper => {
+                wrapper.classList.remove('drag-over');
+            });
 
             const files = e.dataTransfer?.files;
             if (files) {
+                // Find which canvas was dropped on
+                const dropX = e.clientX;
+                const dropY = e.clientY;
+                const targetCanvas = this.multiCanvasManager.getCanvasAtPosition(dropX, dropY);
+                
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     if (file.type.startsWith('image/')) {
                         const reader = new FileReader();
                         reader.onload = (event) => {
                             const imageUrl = event.target?.result as string;
-                            const activeCanvas = this.multiCanvasManager.getActiveCanvas();
-                            if (activeCanvas) {
-                                activeCanvas.addImage(imageUrl);
+                            if (targetCanvas) {
+                                targetCanvas.addImage(imageUrl);
+                            } else {
+                                // Fallback to active canvas if no specific canvas found
+                                const activeCanvas = this.multiCanvasManager.getActiveCanvas();
+                                if (activeCanvas) {
+                                    activeCanvas.addImage(imageUrl);
+                                }
                             }
                         };
                         reader.readAsDataURL(file);
