@@ -199,6 +199,8 @@ export class MultiCanvasManager {
         wrapper.style.gridRow = (gridPos.row + 1).toString();
         wrapper.style.gridColumn = (gridPos.col + 1).toString();
         
+        // Don't apply zoom to individual wrappers anymore
+        
         this.canvasContainer.appendChild(wrapper);
         
         // Add canvas to grid FIRST
@@ -257,6 +259,14 @@ export class MultiCanvasManager {
         const thumbnailItem = document.createElement('div');
         thumbnailItem.className = 'thumbnail-item';
         thumbnailItem.id = `thumb-${canvasId}`;
+        
+        // Get grid position for this canvas
+        const position = this.gridManager.getCanvasPosition(canvasId);
+        if (position) {
+            // Set grid position for thumbnail
+            thumbnailItem.style.gridColumn = (position.col + 1).toString();
+            thumbnailItem.style.gridRow = (position.row + 1).toString();
+        }
         
         // Create thumbnail canvas
         const thumbCanvas = document.createElement('canvas');
@@ -434,23 +444,60 @@ export class MultiCanvasManager {
         return null;
     }
     
+    private currentZoom: number = 1;
+    private viewOffset: { x: number, y: number } = { x: 0, y: 0 };
+    private viewportWidth: number = window.innerWidth;
+    private viewportHeight: number = window.innerHeight;
+    private virtualCanvas = { width: 5000, height: 5000 }; // Virtual infinite canvas
+    
     public setZoom(zoomLevel: number): void {
-        // Apply zoom to canvas container
         const container = this.canvasContainer;
-        if (container) {
-            container.style.transform = `scale(${zoomLevel})`;
-            container.style.transformOrigin = 'top left';
-            
-            // Add padding to prevent cutoff when zoomed out
-            const padding = Math.max(50, 100 * (1 - zoomLevel));
-            container.style.margin = `${padding}px`;
-        }
+        if (!container) return;
         
-        // Update each canvas scale if needed
+        // Clamp zoom level
+        this.currentZoom = Math.max(0.25, Math.min(3, zoomLevel)); // 25% to 300%
+        
+        // Apply scale transformation
+        container.style.transform = `scale(${this.currentZoom})`;
+        container.style.transformOrigin = 'center center';
+        
+        // Update all canvases
         this.canvases.forEach((canvasManager) => {
-            // Canvas internal scale can be updated here if needed
             canvasManager.render();
         });
+    }
+    
+    private updateViewTransform(): void {
+        const container = this.canvasContainer;
+        if (!container) return;
+        
+        // Apply pan offset
+        container.style.transform = `translate(${this.viewOffset.x}px, ${this.viewOffset.y}px) scale(${this.currentZoom})`;
+        container.style.transformOrigin = '0 0';
+        
+        // Re-render all canvases
+        this.canvases.forEach((canvasManager) => {
+            canvasManager.render();
+        });
+    }
+    
+    public setViewOffset(x: number, y: number): void {
+        this.viewOffset = { x, y };
+        this.updateViewTransform();
+    }
+    
+    public panView(dx: number, dy: number): void {
+        this.viewOffset.x += dx;
+        this.viewOffset.y += dy;
+        this.updateViewTransform();
+    }
+    
+    public getViewOffset(): { x: number, y: number } {
+        return this.viewOffset;
+    }
+    
+    public getZoom(): number {
+        return this.currentZoom;
     }
     
     public getCanvasAtPosition(x: number, y: number): CanvasManager | null {

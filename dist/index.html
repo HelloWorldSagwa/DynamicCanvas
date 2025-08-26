@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Canvas Design Tool</title>
+    <title>Dynamic Canvas - Studio5</title>
 <script defer src="bundle.js"></script></head>
 <body>
     <div id="app">
@@ -36,7 +36,6 @@
                 <span id="zoomValue">100%</span>
             </div>
             <button id="clearBtn" class="tool-btn danger">전체 삭제</button>
-            <button id="syncToggleBtn" class="tool-btn sync-btn">🔗 동기화: OFF</button>
         </div>
         <div class="text-toolbar" id="textToolbar" style="display: none;">
             <div class="text-controls">
@@ -113,8 +112,13 @@
             </div>
         </div>
         <div class="thumbnail-bar" id="thumbnailBar">
-            <div class="thumbnail-container" id="thumbnailContainer">
-                <!-- Thumbnails will be added here dynamically -->
+            <button class="thumbnail-toggle" id="thumbnailToggle" title="썸네일 토글">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+            <div class="thumbnail-grid-container" id="thumbnailContainer">
+                <!-- Thumbnails will be added here dynamically in grid layout -->
             </div>
         </div>
     </div>

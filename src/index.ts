@@ -26,6 +26,8 @@ class App {
         const resolutionPreset = document.getElementById('resolutionPreset') as HTMLSelectElement;
         const zoomSlider = document.getElementById('zoomSlider') as HTMLInputElement;
         const zoomValue = document.getElementById('zoomValue') as HTMLSpanElement;
+        const thumbnailBar = document.getElementById('thumbnailBar') as HTMLElement;
+        const thumbnailToggle = document.getElementById('thumbnailToggle') as HTMLButtonElement;
 
         addTextBtn?.addEventListener('click', () => {
             const activeCanvas = this.multiCanvasManager.getActiveCanvas();
@@ -100,6 +102,16 @@ class App {
             }
             this.multiCanvasManager.setZoom(zoom / 100);
         });
+
+        // Thumbnail toggle button
+        thumbnailToggle?.addEventListener('click', () => {
+            thumbnailBar?.classList.toggle('collapsed');
+            const isCollapsed = thumbnailBar?.classList.contains('collapsed');
+            thumbnailToggle.setAttribute('aria-expanded', !isCollapsed ? 'true' : 'false');
+        });
+
+        // Pan functionality
+        this.setupPanFunctionality(canvasContainer);
 
         // Crop button
         const cropBtn = document.getElementById('cropBtn') as HTMLButtonElement;
@@ -213,6 +225,82 @@ class App {
                         reader.readAsDataURL(file);
                     }
                 }
+            }
+        });
+    }
+
+    private setupPanFunctionality(container: HTMLElement | null): void {
+        if (!container) return;
+
+        let isPanning = false;
+        let isSpacePressed = false;
+        let startX = 0;
+        let startY = 0;
+        let initialOffset = { x: 0, y: 0 };
+
+        // Remove wheel zoom - only use slider for zoom control
+
+        // Check if clicking on empty space (not on canvas or elements)
+        const isEmptySpace = (e: MouseEvent): boolean => {
+            const target = e.target as HTMLElement;
+            // Check if clicking on canvas container background
+            return target.id === 'canvasContainer' || 
+                   target.classList.contains('canvas-container');
+        };
+
+        // Mouse events for panning
+        container.addEventListener('mousedown', (e) => {
+            // Pan with middle mouse OR left click on empty space OR space key
+            if (e.button === 1 || (e.button === 0 && isEmptySpace(e)) || isSpacePressed) {
+                e.preventDefault();
+                isPanning = true;
+                container.style.cursor = 'grabbing';
+                startX = e.clientX;
+                startY = e.clientY;
+                initialOffset = this.multiCanvasManager.getViewOffset();
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                e.preventDefault();
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                this.multiCanvasManager.panView(dx, dy);
+                startX = e.clientX;
+                startY = e.clientY;
+            }
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (isPanning) {
+                isPanning = false;
+                container.style.cursor = 'default';
+            }
+        });
+
+        // Space key for pan mode (optional, keep for compatibility)
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !isSpacePressed) {
+                e.preventDefault();
+                isSpacePressed = true;
+                container.style.cursor = 'grab';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                isSpacePressed = false;
+                if (!isPanning) {
+                    container.style.cursor = 'default';
+                }
+            }
+        });
+
+        // Prevent context menu on middle click
+        container.addEventListener('contextmenu', (e) => {
+            if (e.button === 1) {
+                e.preventDefault();
             }
         });
     }

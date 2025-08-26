@@ -183,28 +183,17 @@ body {
     flex: 1;
     background: linear-gradient(to br, #f0f4f8, #e2e8f0);
     overflow: auto;
-    padding: 40px;
+    padding: 100px; /* Increased padding to prevent edge cutting */
     position: relative;
     display: grid;
     grid-template-columns: repeat(auto-fill, max-content);
     grid-template-rows: repeat(auto-fill, max-content);
     gap: 50px;
-    justify-content: start;
-    align-items: start;
+    justify-content: center;
+    align-items: center;
 }
 
-#zoom-wrapper {
-    display: grid;
-    gap: 40px;
-    min-width: fit-content;
-    min-height: fit-content;
-    padding: 200px;
-    grid-auto-flow: row;
-    justify-items: center;
-    align-items: center;
-    width: fit-content;
-    height: fit-content;
-}
+/* zoom-wrapper removed - not needed */
 
 .canvas-wrapper {
     flex-shrink: 0;
@@ -561,32 +550,60 @@ body {
 }
 
 .thumbnail-bar {
-    min-height: 120px;
-    max-height: 300px;
-    height: 120px;
+    position: relative;
     background: #2d3748;
     border-top: 1px solid #1a202c;
-    display: flex;
-    align-items: flex-start;
-    padding: 10px 20px;
-    overflow: auto;
-    flex-shrink: 0;
-    resize: vertical;
+    transition: height 0.3s ease;
+    overflow: hidden;
+    height: 180px;
 }
 
-.thumbnail-container {
+.thumbnail-bar.collapsed {
+    height: 40px;
+}
+
+.thumbnail-toggle {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    background: #4a5568;
+    border: 1px solid #718096;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.thumbnail-toggle:hover {
+    background: #5a6578;
+    border-color: #828a96;
+}
+
+.thumbnail-bar.collapsed .thumbnail-toggle svg {
+    transform: rotate(180deg);
+}
+
+.thumbnail-grid-container {
     display: grid;
-    grid-auto-columns: 140px;
-    grid-auto-rows: 120px;
+    grid-template-columns: repeat(10, 140px);
+    grid-template-rows: repeat(10, 110px);
     gap: 15px;
-    width: 100%;
+    padding: 50px 20px 20px 20px;
+    overflow: auto;
     height: 100%;
+    width: 100%;
     align-content: start;
-    padding: 10px;
+    justify-content: start;
 }
 
 .thumbnail-item {
-    flex-shrink: 0;
+    position: relative;
     width: 120px;
     height: 90px;
     background: white;

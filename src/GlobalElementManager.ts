@@ -3,6 +3,7 @@ import { CanvasElement } from './types';
 export class GlobalElementManager {
     private elements: Map<string, CanvasElement> = new Map();
     private selectedElementId: string | null = null;
+    private selectedElementIds: Set<string> = new Set(); // For multi-selection
     private changeListeners: Set<() => void> = new Set();
     
     constructor() {
@@ -100,6 +101,54 @@ export class GlobalElementManager {
         return null;
     }
     
+    // Multi-selection methods
+    public addToSelection(elementId: string): void {
+        this.selectedElementIds.add(elementId);
+        this.notifyChange();
+    }
+    
+    public removeFromSelection(elementId: string): void {
+        this.selectedElementIds.delete(elementId);
+        this.notifyChange();
+    }
+    
+    public clearSelection(): void {
+        this.selectedElementIds.clear();
+        this.selectedElementId = null;
+        this.notifyChange();
+    }
+    
+    public getSelectedElements(): CanvasElement[] {
+        return Array.from(this.selectedElementIds)
+            .map(id => this.elements.get(id))
+            .filter(el => el !== undefined) as CanvasElement[];
+    }
+    
+    public isSelected(elementId: string): boolean {
+        return this.selectedElementIds.has(elementId) || this.selectedElementId === elementId;
+    }
+    
+    public getElementsInRectangle(x: number, y: number, width: number, height: number): CanvasElement[] {
+        const result: CanvasElement[] = [];
+        const rectRight = x + width;
+        const rectBottom = y + height;
+        
+        this.elements.forEach(element => {
+            const elementRight = element.x + element.width;
+            const elementBottom = element.y + element.height;
+            
+            // Check if element intersects with selection rectangle
+            if (!(element.x > rectRight || 
+                  elementRight < x || 
+                  element.y > rectBottom || 
+                  elementBottom < y)) {
+                result.push(element);
+            }
+        });
+        
+        return result;
+    }
+    
     public clearAll(): void {
         this.elements.clear();
         this.selectedElementId = null;
@@ -132,11 +181,28 @@ export class GlobalElementManager {
         const elementsArray = Array.from(this.elements.values());
         for (let i = elementsArray.length - 1; i >= 0; i--) {
             const element = elementsArray[i];
-            if (globalX >= element.x && 
-                globalX <= element.x + element.width &&
-                globalY >= element.y && 
-                globalY <= element.y + element.height) {
-                return element;
+            
+            // If element has crop, check if click is within cropped area
+            if (element.cropX !== undefined && element.cropY !== undefined &&
+                element.cropWidth !== undefined && element.cropHeight !== undefined) {
+                // Check cropped area bounds
+                const cropLeft = element.x + element.cropX;
+                const cropTop = element.y + element.cropY;
+                const cropRight = cropLeft + element.cropWidth;
+                const cropBottom = cropTop + element.cropHeight;
+                
+                if (globalX >= cropLeft && globalX <= cropRight &&
+                    globalY >= cropTop && globalY <= cropBottom) {
+                    return element;
+                }
+            } else {
+                // No crop - check normal bounds
+                if (globalX >= element.x && 
+                    globalX <= element.x + element.width &&
+                    globalY >= element.y && 
+                    globalY <= element.y + element.height) {
+                    return element;
+                }
             }
         }
         return null;

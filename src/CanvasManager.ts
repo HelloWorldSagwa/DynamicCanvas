@@ -11,7 +11,9 @@ export class CanvasManager {
     // Linking state is tracked by checking link button status
     // private editingElementId: string | null = null; // Removed - not needed anymore  // Track element being edited
     private cropMode: boolean = false;  // Track crop mode
-    private cropHandle: string | null = null;  // Current crop handle being dragged
+    private cropHandle: string | null = null;  // Current crop handle being dragged  
+    private cropBounds: { left: number, top: number, right: number, bottom: number } | null = null;
+    private cropOriginalBounds: { left: number, top: number, right: number, bottom: number } | null = null;
     private cropStartPoint: Point = { x: 0, y: 0 };  // Start point for crop dragging
     private cropDragging: boolean = false;  // Track if dragging crop area
     private cropResizing: boolean = false;  // Track if resizing crop area
@@ -22,6 +24,10 @@ export class CanvasManager {
         startPoint: { x: 0, y: 0 },
         elementStartPoint: { x: 0, y: 0 }
     };
+    private isSelectionDragging: boolean = false;
+    private selectionStartPoint: Point = { x: 0, y: 0 };
+    private selectionEndPoint: Point = { x: 0, y: 0 };
+    private originalPositions: Map<string, Point> = new Map();
     private resizeState: ResizeState = {
         isResizing: false,
         element: null,
@@ -358,39 +364,73 @@ export class CanvasManager {
         const localPoint = this.getMousePosition(e);
         const globalPoint = this.localToGlobal(localPoint.x, localPoint.y);
         
-        // Check if we're in crop mode
+        // WARNING: CROP MODE BEHAVIOR - DO NOT MODIFY WITHOUT EXPLICIT USER INSTRUCTION
+        // 크롭 모드: 더블클릭으로 활성화, 외부 클릭으로 적용
+        // Crop mode: activate with double-click, apply with outside click
+        // CROP MODE: Only allow crop handle dragging, disable ALL other mouse functions
         if (this.cropMode) {
             const selectedElement = this.globalManager.getSelectedElement();
-            if (selectedElement && selectedElement.type === 'image' && 
-                selectedElement.cropX !== undefined && selectedElement.cropY !== undefined) {
-                
-                // Check if clicking on crop handle
-                const cropHandle = this.getCropHandle(localPoint, selectedElement);
-                if (cropHandle) {
-                    this.cropResizing = true;
-                    this.cropResizeHandle = cropHandle;
-                    this.cropStartPoint = localPoint;
-                    return;
-                }
-                
-                // Check if clicking inside crop area for dragging
+            if (selectedElement && selectedElement.type === 'image' && this.cropBounds) {
                 const localX = selectedElement.x - this.offsetX;
                 const localY = selectedElement.y - this.offsetY;
-                if (localPoint.x >= localX + selectedElement.cropX &&
-                    localPoint.x <= localX + selectedElement.cropX + (selectedElement.cropWidth || 0) &&
-                    localPoint.y >= localY + (selectedElement.cropY || 0) &&
-                    localPoint.y <= localY + (selectedElement.cropY || 0) + (selectedElement.cropHeight || 0)) {
-                    this.cropDragging = true;
-                    this.cropStartPoint = localPoint;
+                const mouseX = localPoint.x - localX;
+                const mouseY = localPoint.y - localY;
+                
+                // Check if click is outside the image bounds - if so, apply crop
+                if (mouseX < 0 || mouseY < 0 || 
+                    mouseX > selectedElement.width || mouseY > selectedElement.height) {
+                    console.log('[CROP] Click outside image - applying crop');
+                    this.applyCrop();
                     return;
                 }
+                
+                // Check which edge/corner is being clicked (20px threshold for easier clicking)
+                const threshold = 20;
+                const bounds = this.cropBounds;
+                
+                const nearLeft = Math.abs(mouseX - bounds.left) < threshold;
+                const nearRight = Math.abs(mouseX - bounds.right) < threshold;
+                const nearTop = Math.abs(mouseY - bounds.top) < threshold;
+                const nearBottom = Math.abs(mouseY - bounds.bottom) < threshold;
+                
+                // Determine handle (corners have priority)
+                if (nearLeft && nearTop) {
+                    this.cropHandle = 'nw';
+                } else if (nearRight && nearTop) {
+                    this.cropHandle = 'ne';
+                } else if (nearRight && nearBottom) {
+                    this.cropHandle = 'se';
+                } else if (nearLeft && nearBottom) {
+                    this.cropHandle = 'sw';
+                } else if (nearLeft) {
+                    this.cropHandle = 'w';
+                } else if (nearRight) {
+                    this.cropHandle = 'e';
+                } else if (nearTop) {
+                    this.cropHandle = 'n';
+                } else if (nearBottom) {
+                    this.cropHandle = 's';
+                }
+                
+                if (this.cropHandle) {
+                    console.log(`[CROP] Handle detected: ${this.cropHandle}`);
+                    this.cropOriginalBounds = { ...this.cropBounds };
+                } else {
+                    console.log(`[CROP] No handle detected at mouse position`);
+                }
+            } else if (this.cropMode) {
+                // No selected image or click outside any image - apply crop and exit crop mode
+                console.log('[CROP] Click in empty space - applying crop');
+                this.applyCrop();
             }
+            // In crop mode, stop here - no dragging, no selection, no other interactions
+            return;
         }
         
         // Get element at global position
         const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
         
-        if (element) {
+        if (element && !this.cropMode) {  // Skip resize check in crop mode
             const selectedElement = this.globalManager.getSelectedElement();
             const handle = selectedElement && element.id === selectedElement.id ? 
                 this.getResizeHandle(localPoint, element) : null;
@@ -410,13 +450,33 @@ export class CanvasManager {
                     } as any
                 };
             } else {
-                this.globalManager.setSelectedElement(element.id);
+                // Check if Shift or Cmd/Ctrl is held for multi-selection
+                if (e.shiftKey || e.metaKey || e.ctrlKey) {
+                    // Toggle selection
+                    if (this.globalManager.isSelected(element.id)) {
+                        this.globalManager.removeFromSelection(element.id);
+                    } else {
+                        this.globalManager.addToSelection(element.id);
+                    }
+                } else {
+                    // Single selection
+                    this.globalManager.clearSelection();
+                    this.globalManager.setSelectedElement(element.id);
+                }
+                
                 this.dragState = {
                     isDragging: true,
                     element: element,
                     startPoint: globalPoint,
                     elementStartPoint: { x: element.x, y: element.y }
                 };
+                
+                // Store original positions of all selected elements for multi-drag
+                this.originalPositions.clear();
+                const selectedElements = this.globalManager.getSelectedElements();
+                selectedElements.forEach(el => {
+                    this.originalPositions.set(el.id, { x: el.x, y: el.y });
+                });
                 this.updateTextToolbar();
                 
                 // Dispatch selection changed event
@@ -425,8 +485,17 @@ export class CanvasManager {
                 });
                 document.dispatchEvent(event);
             }
-        } else {
-            this.globalManager.setSelectedElement(null);
+        } else if (!this.cropMode) {  // Only allow selection rectangle when NOT in crop mode
+            // Start selection rectangle if not clicking on an element
+            if (!e.shiftKey && !e.metaKey && !e.ctrlKey) {
+                this.globalManager.clearSelection();
+            }
+            
+            // Start selection dragging
+            this.isSelectionDragging = true;
+            this.selectionStartPoint = globalPoint;
+            this.selectionEndPoint = globalPoint;
+            
             this.updateTextToolbar();
             
             // Dispatch selection changed event with null
@@ -592,49 +661,116 @@ export class CanvasManager {
         const localPoint = this.getMousePosition(e);
         const globalPoint = this.localToGlobal(localPoint.x, localPoint.y);
         
-        // Handle crop mode interactions
-        if (this.cropMode) {
+        // Handle crop mode - drag handles to crop
+        if (this.cropMode && this.cropHandle && this.cropBounds) {
             const selectedElement = this.globalManager.getSelectedElement();
             if (selectedElement && selectedElement.type === 'image') {
-                if (this.cropDragging) {
-                    this.handleCropDrag(localPoint, selectedElement);
-                    this.render();
-                    return;
-                } else if (this.cropResizing) {
-                    this.handleCropResize(localPoint, selectedElement);
-                    this.render();
-                    return;
-                } else {
-                    // Update cursor for crop handles
-                    const cropHandle = this.getCropHandle(localPoint, selectedElement);
-                    if (cropHandle) {
-                        this.canvas.style.cursor = this.getCursorForCropHandle(cropHandle);
-                    } else {
-                        const localX = selectedElement.x - this.offsetX;
-                        const localY = selectedElement.y - this.offsetY;
-                        if (selectedElement.cropX !== undefined &&
-                            localPoint.x >= localX + selectedElement.cropX &&
-                            localPoint.x <= localX + selectedElement.cropX + (selectedElement.cropWidth || 0) &&
-                            localPoint.y >= localY + (selectedElement.cropY || 0) &&
-                            localPoint.y <= localY + (selectedElement.cropY || 0) + (selectedElement.cropHeight || 0)) {
-                            this.canvas.style.cursor = 'move';
-                        } else {
-                            this.canvas.style.cursor = 'default';
-                        }
-                    }
+                const localX = selectedElement.x - this.offsetX;
+                const localY = selectedElement.y - this.offsetY;
+                const mouseX = Math.max(0, Math.min(localPoint.x - localX, selectedElement.width));
+                const mouseY = Math.max(0, Math.min(localPoint.y - localY, selectedElement.height));
+                
+                // Update crop bounds based on which handle is being dragged
+                const bounds = { ...this.cropBounds };
+                
+                // Update the appropriate edge based on handle
+                if (this.cropHandle.includes('n')) bounds.top = mouseY;
+                if (this.cropHandle.includes('s')) bounds.bottom = mouseY;
+                if (this.cropHandle.includes('w')) bounds.left = mouseX;
+                if (this.cropHandle.includes('e')) bounds.right = mouseX;
+                
+                // Ensure minimum size of 20px
+                const minSize = 20;
+                if (bounds.right - bounds.left >= minSize && bounds.bottom - bounds.top >= minSize) {
+                    this.cropBounds = bounds;
+                    
+                    // Don't update element crop values during drag - only update bounds
+                    // The actual crop values are only set when applyCrop is called
+                    
+                    // Update crop info display
+                    this.updateCropInfo();
                 }
+                
+                this.render();
+                return;
             }
+        }
+        
+        // Handle selection rectangle dragging
+        if (this.isSelectionDragging) {
+            this.selectionEndPoint = globalPoint;
+            
+            // Calculate selection rectangle bounds
+            const x = Math.min(this.selectionStartPoint.x, this.selectionEndPoint.x);
+            const y = Math.min(this.selectionStartPoint.y, this.selectionEndPoint.y);
+            const width = Math.abs(this.selectionEndPoint.x - this.selectionStartPoint.x);
+            const height = Math.abs(this.selectionEndPoint.y - this.selectionStartPoint.y);
+            
+            // Get all elements in the selection rectangle
+            const elementsInRect = this.globalManager.getElementsInRectangle(x, y, width, height);
+            
+            // Clear and reselect elements
+            this.globalManager.clearSelection();
+            elementsInRect.forEach(element => {
+                this.globalManager.addToSelection(element.id);
+            });
+            
+            this.render();
+            return;
         }
         
         // Only handle if we're actively dragging or resizing from this canvas
         if (!this.dragState.isDragging && !this.resizeState.isResizing && !this.cropDragging && !this.cropResizing) {
-            // Check for hover effects only if mouse is over this canvas
-            if (e.target === this.canvas && !this.cropMode) {
-                const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
-                const selectedElement = this.globalManager.getSelectedElement();
-                const handle = selectedElement && element && element.id === selectedElement.id ? 
-                    this.getResizeHandle(localPoint, element) : null;
-                this.canvas.style.cursor = handle ? this.getCursorForHandle(handle) : 'default';
+            // Check for hover effects
+            if (e.target === this.canvas) {
+                if (this.cropMode) {
+                    // In crop mode, only change cursor near crop handles
+                    const selectedElement = this.globalManager.getSelectedElement();
+                    if (selectedElement && selectedElement.type === 'image' && this.cropBounds) {
+                        const localX = selectedElement.x - this.offsetX;
+                        const localY = selectedElement.y - this.offsetY;
+                        const mouseX = localPoint.x - localX;
+                        const mouseY = localPoint.y - localY;
+                        
+                        const threshold = 20;
+                        const bounds = this.cropBounds;
+                        
+                        const nearLeft = Math.abs(mouseX - bounds.left) < threshold;
+                        const nearRight = Math.abs(mouseX - bounds.right) < threshold;
+                        const nearTop = Math.abs(mouseY - bounds.top) < threshold;
+                        const nearBottom = Math.abs(mouseY - bounds.bottom) < threshold;
+                        
+                        // Set cursor based on proximity to handles
+                        if (nearLeft && nearTop) {
+                            this.canvas.style.cursor = 'nw-resize';
+                        } else if (nearRight && nearTop) {
+                            this.canvas.style.cursor = 'ne-resize';
+                        } else if (nearRight && nearBottom) {
+                            this.canvas.style.cursor = 'se-resize';
+                        } else if (nearLeft && nearBottom) {
+                            this.canvas.style.cursor = 'sw-resize';
+                        } else if (nearLeft) {
+                            this.canvas.style.cursor = 'w-resize';
+                        } else if (nearRight) {
+                            this.canvas.style.cursor = 'e-resize';
+                        } else if (nearTop) {
+                            this.canvas.style.cursor = 'n-resize';
+                        } else if (nearBottom) {
+                            this.canvas.style.cursor = 's-resize';
+                        } else {
+                            this.canvas.style.cursor = 'default';
+                        }
+                    } else {
+                        this.canvas.style.cursor = 'default';
+                    }
+                } else {
+                    // Normal mode - check for resize handles
+                    const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
+                    const selectedElement = this.globalManager.getSelectedElement();
+                    const handle = selectedElement && element && element.id === selectedElement.id ? 
+                        this.getResizeHandle(localPoint, element) : null;
+                    this.canvas.style.cursor = handle ? this.getCursorForHandle(handle) : 'default';
+                }
             }
             return;
         }
@@ -652,36 +788,66 @@ export class CanvasManager {
             const dx = currentGlobalPoint.x - this.dragState.startPoint.x;
             const dy = currentGlobalPoint.y - this.dragState.startPoint.y;
             
-            let newX = this.dragState.elementStartPoint.x + dx;
-            let newY = this.dragState.elementStartPoint.y + dy;
-            
-            // If linking is disabled, allow partial hiding but prevent complete loss
-            if (!this.isLinkingEnabled()) {
-                const element = this.dragState.element;
-                const minVisible = 50; // Minimum pixels that must remain visible
-                
-                // Ensure at least minVisible pixels remain on canvas
-                newX = Math.max(this.offsetX - element.width + minVisible, 
-                               Math.min(newX, this.offsetX + this.canvas.width - minVisible));
-                newY = Math.max(this.offsetY - element.height + minVisible, 
-                               Math.min(newY, this.offsetY + this.canvas.height - minVisible));
-            }
-            
-            // Update element's global position
-            this.globalManager.updateElement(this.dragState.element.id, {
-                x: newX,
-                y: newY
-            });
-            
-            // Only emit dragging event when linking is enabled
-            if (this.isLinkingEnabled()) {
-                document.dispatchEvent(new CustomEvent('element-dragging', {
-                    detail: {
-                        elementId: this.dragState.element.id,
-                        globalX: newX,
-                        globalY: newY
+            // Check if we're moving multiple selected elements
+            const selectedElements = this.globalManager.getSelectedElements();
+            if (selectedElements.length > 1) {
+                // Move all selected elements together
+                selectedElements.forEach(element => {
+                    // Calculate new position for each element
+                    const originalPos = this.originalPositions.get(element.id) || { x: element.x, y: element.y };
+                    let newX = originalPos.x + dx;
+                    let newY = originalPos.y + dy;
+                    
+                    // If linking is disabled, allow partial hiding but prevent complete loss
+                    if (!this.isLinkingEnabled()) {
+                        const minVisible = 50; // Minimum pixels that must remain visible
+                        
+                        // Ensure at least minVisible pixels remain on canvas
+                        newX = Math.max(this.offsetX - element.width + minVisible, 
+                                       Math.min(newX, this.offsetX + this.canvas.width - minVisible));
+                        newY = Math.max(this.offsetY - element.height + minVisible, 
+                                       Math.min(newY, this.offsetY + this.canvas.height - minVisible));
                     }
-                }));
+                    
+                    // Update element's global position
+                    this.globalManager.updateElement(element.id, {
+                        x: newX,
+                        y: newY
+                    });
+                });
+            } else {
+                // Single element drag (original logic)
+                let newX = this.dragState.elementStartPoint.x + dx;
+                let newY = this.dragState.elementStartPoint.y + dy;
+                
+                // If linking is disabled, allow partial hiding but prevent complete loss
+                if (!this.isLinkingEnabled()) {
+                    const element = this.dragState.element;
+                    const minVisible = 50; // Minimum pixels that must remain visible
+                    
+                    // Ensure at least minVisible pixels remain on canvas
+                    newX = Math.max(this.offsetX - element.width + minVisible, 
+                                   Math.min(newX, this.offsetX + this.canvas.width - minVisible));
+                    newY = Math.max(this.offsetY - element.height + minVisible, 
+                                   Math.min(newY, this.offsetY + this.canvas.height - minVisible));
+                }
+                
+                // Update element's global position
+                this.globalManager.updateElement(this.dragState.element.id, {
+                    x: newX,
+                    y: newY
+                });
+                
+                // Only emit dragging event when linking is enabled
+                if (this.isLinkingEnabled()) {
+                    document.dispatchEvent(new CustomEvent('element-dragging', {
+                        detail: {
+                            elementId: this.dragState.element.id,
+                            globalX: newX,
+                            globalY: newY
+                        }
+                    }));
+                }
             }
             
             // Trigger re-render on all canvases
@@ -837,10 +1003,18 @@ export class CanvasManager {
 
     private handleMouseUp(e: MouseEvent): void {
         // Reset crop states
-        if (this.cropDragging || this.cropResizing) {
+        if (this.cropDragging || this.cropResizing || this.cropHandle) {
             this.cropDragging = false;
             this.cropResizing = false;
             this.cropResizeHandle = '';
+            this.cropHandle = null; // Reset crop handle
+            this.render();
+            return;
+        }
+        
+        // Reset selection dragging
+        if (this.isSelectionDragging) {
+            this.isSelectionDragging = false;
             this.render();
             return;
         }
@@ -853,6 +1027,7 @@ export class CanvasManager {
                 startPoint: { x: 0, y: 0 },
                 elementStartPoint: { x: 0, y: 0 }
             };
+            this.originalPositions.clear();
             this.resizeState = {
                 isResizing: false,
                 element: null,
@@ -872,12 +1047,75 @@ export class CanvasManager {
         const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
         
         if (element) {
-            if (element.type === 'text') {
+            if (element.type === 'text' && !this.cropMode) {
                 this.startInlineEditing(element);
+            } else if (element.type === 'image') {
+                // Toggle crop mode on double-click for images
+                if (!this.cropMode) {
+                    this.globalManager.setSelectedElement(element.id);
+                    this.toggleCropMode();
+                }
             }
-            // Removed double-click crop mode - crop should be initiated via button/menu only
         }
     }
+    
+    private startSimpleCropMode(element: CanvasElement): void {
+        if (element.type !== 'image') return;
+        
+        this.cropMode = true;
+        this.globalManager.setSelectedElement(element.id);
+        
+        // Store original dimensions if not already stored
+        if (!element.originalWidth) {
+            this.globalManager.updateElement(element.id, {
+                originalWidth: element.width,
+                originalHeight: element.height,
+                originalImageElement: element.imageElement
+            });
+        }
+        
+        // Initialize crop bounds to full image (user will drag edges inward)
+        this.cropBounds = {
+            left: 0,
+            top: 0,
+            right: element.width,
+            bottom: element.height
+        };
+        
+        // If element has previous crop, use those bounds
+        if (element.cropX !== undefined && element.cropWidth !== undefined) {
+            this.cropBounds = {
+                left: element.cropX,
+                top: element.cropY || 0,
+                right: element.cropX + element.cropWidth,
+                bottom: (element.cropY || 0) + (element.cropHeight || 0)
+            };
+        }
+        
+        this.cropOriginalBounds = { ...this.cropBounds };
+        
+        // Update element with initial crop values
+        this.globalManager.updateElement(element.id, {
+            cropX: this.cropBounds.left,
+            cropY: this.cropBounds.top,
+            cropWidth: this.cropBounds.right - this.cropBounds.left,
+            cropHeight: this.cropBounds.bottom - this.cropBounds.top
+        });
+        
+        // Show crop toolbar
+        this.showCropToolbar();
+        this.render();
+    }
+    
+    private updateCropInfo(): void {
+        const infoElement = document.querySelector('.crop-info');
+        if (infoElement && this.cropBounds) {
+            const width = Math.round(this.cropBounds.right - this.cropBounds.left);
+            const height = Math.round(this.cropBounds.bottom - this.cropBounds.top);
+            infoElement.textContent = `${width} × ${height}px`;
+        }
+    }
+    
     
     private createInlineTextEditor(globalX: number, globalY: number, initialText: string, fontSize: number): void {
         // Check if we're already editing
@@ -1606,16 +1844,31 @@ export class CanvasManager {
     public startCropMode(): void {
         const selectedElement = this.globalManager.getSelectedElement();
         if (selectedElement && selectedElement.type === 'image') {
-            this.toggleCropMode();
+            // Only start crop if not already in crop mode
+            if (!this.cropMode) {
+                this.toggleCropMode();
+            }
         }
     }
     
     public deleteSelected(): void {
-        const selectedElement = this.globalManager.getSelectedElement();
-        if (selectedElement) {
-            this.globalManager.removeElement(selectedElement.id);
+        // Delete all selected elements (supports multi-selection)
+        const selectedElements = this.globalManager.getSelectedElements();
+        if (selectedElements.length > 0) {
+            selectedElements.forEach(element => {
+                this.globalManager.removeElement(element.id);
+            });
+            this.globalManager.clearSelection();
             this.updateTextToolbar();
             this.render();
+        } else {
+            // Fallback to single selection
+            const selectedElement = this.globalManager.getSelectedElement();
+            if (selectedElement) {
+                this.globalManager.removeElement(selectedElement.id);
+                this.updateTextToolbar();
+                this.render();
+            }
         }
     }
 
@@ -1659,15 +1912,45 @@ export class CanvasManager {
                 this.renderImage(localElement);
             }
             
-            // Render selection if this element is selected
-            const selectedElement = this.globalManager.getSelectedElement();
-            if (selectedElement && element.id === selectedElement.id) {
+            // Render selection if this element is selected (either single or multi-selection)
+            if (this.globalManager.isSelected(element.id)) {
                 this.renderSelection(localElement);
-                this.renderResizeHandles(localElement);
+                // Only render resize handles for single selection AND not in crop mode
+                const selectedElements = this.globalManager.getSelectedElements();
+                if (!this.cropMode && (selectedElements.length === 1 || 
+                    (this.globalManager.getSelectedElement()?.id === element.id))) {
+                    this.renderResizeHandles(localElement);
+                }
             }
             
             this.ctx.restore();
         }
+        
+        // Render selection rectangle if dragging
+        if (this.isSelectionDragging) {
+            this.renderSelectionRectangle();
+        }
+    }
+    
+    private renderSelectionRectangle(): void {
+        const localStart = this.globalToLocal(this.selectionStartPoint.x, this.selectionStartPoint.y);
+        const localEnd = this.globalToLocal(this.selectionEndPoint.x, this.selectionEndPoint.y);
+        
+        const x = Math.min(localStart.x, localEnd.x);
+        const y = Math.min(localStart.y, localEnd.y);
+        const width = Math.abs(localEnd.x - localStart.x);
+        const height = Math.abs(localEnd.y - localStart.y);
+        
+        this.ctx.save();
+        this.ctx.strokeStyle = '#0066ff';
+        this.ctx.lineWidth = 1;
+        this.ctx.setLineDash([4, 4]);
+        this.ctx.strokeRect(x, y, width, height);
+        
+        // Draw a semi-transparent fill
+        this.ctx.fillStyle = 'rgba(0, 102, 255, 0.1)';
+        this.ctx.fillRect(x, y, width, height);
+        this.ctx.restore();
     }
 
     private renderText(element: CanvasElement): void {
@@ -1720,18 +2003,37 @@ export class CanvasManager {
 
     private renderImage(element: CanvasElement): void {
         if (element.imageElement) {
-            if (element.cropX !== undefined && element.cropY !== undefined && 
+            const selected = this.globalManager.getSelectedElement();
+            const isBeingCropped = this.cropMode && selected?.id === element.id;
+            
+            // In crop mode, always show the full image; otherwise show cropped if crop is applied
+            if (!isBeingCropped && element.cropX !== undefined && element.cropY !== undefined && 
                 element.cropWidth !== undefined && element.cropHeight !== undefined) {
-                // Render cropped image
+                // Apply clipping mask to show only cropped area
+                this.ctx.save();
+                
+                // Create clipping rectangle for the cropped area
+                this.ctx.beginPath();
+                this.ctx.rect(
+                    element.x + element.cropX,
+                    element.y + element.cropY,
+                    element.cropWidth,
+                    element.cropHeight
+                );
+                this.ctx.clip();
+                
+                // Draw the full image (but only cropped area will be visible due to clipping)
                 this.ctx.drawImage(
                     element.imageElement,
-                    element.cropX, element.cropY,  // Source position
-                    element.cropWidth, element.cropHeight,  // Source dimensions
-                    element.x, element.y,  // Destination position
-                    element.width, element.height  // Destination dimensions
+                    element.x,
+                    element.y,
+                    element.width,
+                    element.height
                 );
+                
+                this.ctx.restore();
             } else {
-                // Render full image
+                // Render full image (always in crop mode, or when no crop is set)
                 this.ctx.drawImage(
                     element.imageElement,
                     element.x,
@@ -1742,17 +2044,14 @@ export class CanvasManager {
             }
             
             // Render crop overlay if in crop mode
-            const selected = this.globalManager.getSelectedElement();
-            if (this.cropMode && selected?.id === element.id) {
+            if (isBeingCropped) {
                 this.renderCropOverlay(element);
             }
         }
     }
     
     private renderCropOverlay(element: CanvasElement): void {
-        if (!this.cropMode || element.type !== 'image' || 
-            element.cropX === undefined || element.cropY === undefined ||
-            element.cropWidth === undefined || element.cropHeight === undefined) {
+        if (!this.cropMode || element.type !== 'image' || !this.cropBounds) {
             return;
         }
         
@@ -1762,55 +2061,59 @@ export class CanvasManager {
         // Save context state
         this.ctx.save();
         
-        // Draw dark overlay for entire image
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        this.ctx.fillRect(localX, localY, element.width, element.height);
+        // Draw dark overlay outside crop area
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
         
-        // Clear the crop area (make it visible)
-        this.ctx.globalCompositeOperation = 'destination-out';
-        this.ctx.fillRect(localX + element.cropX, localY + element.cropY, 
-                         element.cropWidth, element.cropHeight);
+        // Draw overlay in four parts around crop area
+        const cropX = this.cropBounds.left;
+        const cropY = this.cropBounds.top;
+        const cropWidth = this.cropBounds.right - this.cropBounds.left;
+        const cropHeight = this.cropBounds.bottom - this.cropBounds.top;
         
-        // Reset composite operation
-        this.ctx.globalCompositeOperation = 'source-over';
+        // Top overlay
+        this.ctx.fillRect(localX, localY, element.width, cropY);
+        // Bottom overlay  
+        this.ctx.fillRect(localX, localY + cropY + cropHeight, element.width, element.height - cropY - cropHeight);
+        // Left overlay
+        this.ctx.fillRect(localX, localY + cropY, cropX, cropHeight);
+        // Right overlay
+        this.ctx.fillRect(localX + cropX + cropWidth, localY + cropY, element.width - cropX - cropWidth, cropHeight);
         
         // Draw crop area border with white solid line
         this.ctx.strokeStyle = '#ffffff';
         this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(localX + element.cropX, localY + element.cropY, 
-                           element.cropWidth, element.cropHeight);
+        this.ctx.strokeRect(localX + cropX, localY + cropY, cropWidth, cropHeight);
         
         // Draw rule of thirds grid
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
         this.ctx.lineWidth = 1;
         // Vertical lines
         for (let i = 1; i <= 2; i++) {
-            const x = localX + element.cropX + (element.cropWidth * i / 3);
+            const x = localX + cropX + (cropWidth * i / 3);
             this.ctx.beginPath();
-            this.ctx.moveTo(x, localY + element.cropY);
-            this.ctx.lineTo(x, localY + element.cropY + element.cropHeight);
+            this.ctx.moveTo(x, localY + cropY);
+            this.ctx.lineTo(x, localY + cropY + cropHeight);
             this.ctx.stroke();
         }
         // Horizontal lines
         for (let i = 1; i <= 2; i++) {
-            const y = localY + element.cropY + (element.cropHeight * i / 3);
+            const y = localY + cropY + (cropHeight * i / 3);
             this.ctx.beginPath();
-            this.ctx.moveTo(localX + element.cropX, y);
-            this.ctx.lineTo(localX + element.cropX + element.cropWidth, y);
+            this.ctx.moveTo(localX + cropX, y);
+            this.ctx.lineTo(localX + cropX + cropWidth, y);
             this.ctx.stroke();
         }
         
-        // Draw resize handles
-        this.drawCropHandles(localX + element.cropX, localY + element.cropY, 
-                            element.cropWidth, element.cropHeight);
+        // Draw crop handles on edges and corners
+        this.drawCropHandles(localX + cropX, localY + cropY, cropWidth, cropHeight);
         
         // Draw crop dimensions
-        const cropText = `${Math.round(element.cropWidth)} × ${Math.round(element.cropHeight)}`;
+        const cropText = `${Math.round(cropWidth)} × ${Math.round(cropHeight)}px`;
         this.ctx.font = 'bold 12px Arial';
         const textMetrics = this.ctx.measureText(cropText);
         const padding = 6;
-        const textX = localX + element.cropX + element.cropWidth/2;
-        const textY = localY + element.cropY + element.cropHeight + 25;
+        const textX = localX + cropX + cropWidth/2;
+        const textY = localY + cropY + cropHeight + 25;
         
         // Background for text
         this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -1830,49 +2133,166 @@ export class CanvasManager {
     }
     
     private drawCropHandles(x: number, y: number, width: number, height: number): void {
-        const handleSize = 10;
-        const handles = [
-            { x: x, y: y, cursor: 'nw-resize', type: 'nw' }, // top-left
-            { x: x + width/2, y: y, cursor: 'n-resize', type: 'n' }, // top-center
-            { x: x + width, y: y, cursor: 'ne-resize', type: 'ne' }, // top-right
-            { x: x + width, y: y + height/2, cursor: 'e-resize', type: 'e' }, // right-center
-            { x: x + width, y: y + height, cursor: 'se-resize', type: 'se' }, // bottom-right
-            { x: x + width/2, y: y + height, cursor: 's-resize', type: 's' }, // bottom-center
-            { x: x, y: y + height, cursor: 'sw-resize', type: 'sw' }, // bottom-left
-            { x: x, y: y + height/2, cursor: 'w-resize', type: 'w' } // left-center
-        ];
+        // Draw clear edge bars for crop mode
+        const edgeThickness = 6;  // Thick bars for edges
+        const edgeLength = 50;    // Length of edge handles
+        const cornerSize = 25;    // Size of corner L-shapes
+        const cornerThickness = 4; // Thickness of corner lines
         
-        handles.forEach(handle => {
-            // White border
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.fillRect(handle.x - handleSize/2 - 1, handle.y - handleSize/2 - 1, 
-                             handleSize + 2, handleSize + 2);
-            
-            // Blue handle
-            this.ctx.fillStyle = '#3182ce';
-            this.ctx.fillRect(handle.x - handleSize/2, handle.y - handleSize/2, 
-                             handleSize, handleSize);
-        });
+        // Corner L-shapes (like cropperjs)
+        this.ctx.strokeStyle = '#39f';
+        this.ctx.lineWidth = cornerThickness;
+        
+        // Top-left corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(x, y + cornerSize);
+        this.ctx.lineTo(x, y);
+        this.ctx.lineTo(x + cornerSize, y);
+        this.ctx.stroke();
+        
+        // Top-right corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + width - cornerSize, y);
+        this.ctx.lineTo(x + width, y);
+        this.ctx.lineTo(x + width, y + cornerSize);
+        this.ctx.stroke();
+        
+        // Bottom-right corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + width, y + height - cornerSize);
+        this.ctx.lineTo(x + width, y + height);
+        this.ctx.lineTo(x + width - cornerSize, y + height);
+        this.ctx.stroke();
+        
+        // Bottom-left corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + cornerSize, y + height);
+        this.ctx.lineTo(x, y + height);
+        this.ctx.lineTo(x, y + height - cornerSize);
+        this.ctx.stroke();
+        
+        // Edge handles - thick bars in the middle of each edge
+        this.ctx.fillStyle = '#39f';
+        
+        // Top edge bar
+        this.ctx.fillRect(
+            x + width/2 - edgeLength/2,
+            y - edgeThickness/2,
+            edgeLength,
+            edgeThickness
+        );
+        this.ctx.strokeStyle = '#fff';
+        this.ctx.lineWidth = 1;
+        this.ctx.strokeRect(
+            x + width/2 - edgeLength/2,
+            y - edgeThickness/2,
+            edgeLength,
+            edgeThickness
+        );
+        
+        // Right edge bar
+        this.ctx.fillStyle = '#39f';
+        this.ctx.fillRect(
+            x + width - edgeThickness/2,
+            y + height/2 - edgeLength/2,
+            edgeThickness,
+            edgeLength
+        );
+        this.ctx.strokeRect(
+            x + width - edgeThickness/2,
+            y + height/2 - edgeLength/2,
+            edgeThickness,
+            edgeLength
+        );
+        
+        // Bottom edge bar
+        this.ctx.fillStyle = '#39f';
+        this.ctx.fillRect(
+            x + width/2 - edgeLength/2,
+            y + height - edgeThickness/2,
+            edgeLength,
+            edgeThickness
+        );
+        this.ctx.strokeRect(
+            x + width/2 - edgeLength/2,
+            y + height - edgeThickness/2,
+            edgeLength,
+            edgeThickness
+        );
+        
+        // Left edge bar
+        this.ctx.fillStyle = '#39f';
+        this.ctx.fillRect(
+            x - edgeThickness/2,
+            y + height/2 - edgeLength/2,
+            edgeThickness,
+            edgeLength
+        );
+        this.ctx.strokeRect(
+            x - edgeThickness/2,
+            y + height/2 - edgeLength/2,
+            edgeThickness,
+            edgeLength
+        );
     }
 
     private renderSelection(element: CanvasElement): void {
-        this.ctx.strokeStyle = '#3182ce';
-        this.ctx.lineWidth = 2;
-        this.ctx.setLineDash([5, 5]);
-        this.ctx.strokeRect(element.x, element.y, element.width, element.height);
-        this.ctx.setLineDash([]);
+        // Different selection style for crop mode
+        if (this.cropMode) {
+            this.ctx.strokeStyle = '#39f';
+            this.ctx.lineWidth = 1;
+            this.ctx.setLineDash([]);
+            this.ctx.strokeRect(element.x - 1, element.y - 1, element.width + 2, element.height + 2);
+        } else {
+            // For cropped images, show selection only around visible area
+            if (element.cropX !== undefined && element.cropY !== undefined &&
+                element.cropWidth !== undefined && element.cropHeight !== undefined) {
+                this.ctx.strokeStyle = '#3182ce';
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([5, 5]);
+                this.ctx.strokeRect(
+                    element.x + element.cropX,
+                    element.y + element.cropY,
+                    element.cropWidth,
+                    element.cropHeight
+                );
+                this.ctx.setLineDash([]);
+            } else {
+                // Normal selection for uncropped elements
+                this.ctx.strokeStyle = '#3182ce';
+                this.ctx.lineWidth = 2;
+                this.ctx.setLineDash([5, 5]);
+                this.ctx.strokeRect(element.x, element.y, element.width, element.height);
+                this.ctx.setLineDash([]);
+            }
+        }
     }
 
     private renderResizeHandles(element: CanvasElement): void {
+        // Adjust handles for cropped images
+        let x = element.x;
+        let y = element.y;
+        let width = element.width;
+        let height = element.height;
+        
+        if (element.cropX !== undefined && element.cropY !== undefined &&
+            element.cropWidth !== undefined && element.cropHeight !== undefined) {
+            // Use cropped area for handles
+            x = element.x + element.cropX;
+            y = element.y + element.cropY;
+            width = element.cropWidth;
+            height = element.cropHeight;
+        }
+        
         const handles = [
-            { x: element.x, y: element.y },
-            { x: element.x + element.width / 2, y: element.y },
-            { x: element.x + element.width, y: element.y },
-            { x: element.x + element.width, y: element.y + element.height / 2 },
-            { x: element.x + element.width, y: element.y + element.height },
-            { x: element.x + element.width / 2, y: element.y + element.height },
-            { x: element.x, y: element.y + element.height },
-            { x: element.x, y: element.y + element.height / 2 }
+            { x: x, y: y },
+            { x: x + width / 2, y: y },
+            { x: x + width, y: y },
+            { x: x + width, y: y + height / 2 },
+            { x: x + width, y: y + height },
+            { x: x + width / 2, y: y + height },
+            { x: x, y: y + height },
+            { x: x, y: y + height / 2 }
         ];
         
         this.ctx.fillStyle = '#3182ce';
@@ -1943,6 +2363,11 @@ export class CanvasManager {
     
     private handleContextMenu(e: MouseEvent): void {
         e.preventDefault();
+        
+        // Disable context menu in crop mode
+        if (this.cropMode) {
+            return;
+        }
         
         const localPoint = this.getMousePosition(e);
         const globalPoint = this.localToGlobal(localPoint.x, localPoint.y);
@@ -2092,6 +2517,8 @@ export class CanvasManager {
         }
     }
     
+    // WARNING: DO NOT MODIFY CROP FUNCTIONALITY WITHOUT EXPLICIT USER INSTRUCTION
+    // 크롭 기능을 사용자의 명시적 지시 없이 변경하지 마십시오
     private toggleCropMode(): void {
         const selectedElement = this.globalManager.getSelectedElement();
         if (!selectedElement || selectedElement.type !== 'image') {
@@ -2111,20 +2538,24 @@ export class CanvasManager {
                 });
             }
             
-            // Initialize crop area to full image with small padding if not set
-            if (selectedElement.cropX === undefined) {
-                const padding = 10;
-                const cropX = padding;
-                const cropY = padding;
-                const cropWidth = selectedElement.width - (padding * 2);
-                const cropHeight = selectedElement.height - (padding * 2);
-                
-                this.globalManager.updateElement(selectedElement.id, {
-                    cropX: cropX,
-                    cropY: cropY,
-                    cropWidth: cropWidth,
-                    cropHeight: cropHeight
-                });
+            // Load existing crop bounds if available, otherwise use full image
+            if (selectedElement.cropX !== undefined && selectedElement.cropY !== undefined &&
+                selectedElement.cropWidth !== undefined && selectedElement.cropHeight !== undefined) {
+                // Restore previous crop settings for fine-tuning
+                this.cropBounds = {
+                    left: selectedElement.cropX,
+                    top: selectedElement.cropY,
+                    right: selectedElement.cropX + selectedElement.cropWidth,
+                    bottom: selectedElement.cropY + selectedElement.cropHeight
+                };
+            } else {
+                // Initialize crop bounds to full image
+                this.cropBounds = {
+                    left: 0,
+                    top: 0,
+                    right: selectedElement.width,
+                    bottom: selectedElement.height
+                };
             }
             
             // Add crop mode class to canvas for styling
@@ -2183,56 +2614,38 @@ export class CanvasManager {
         }
     }
     
+    // WARNING: DO NOT MODIFY CROP FUNCTIONALITY WITHOUT EXPLICIT USER INSTRUCTION
+    // 크롭은 마스킹 방식으로 작동하며 새 이미지를 생성하지 않습니다
+    // Crop works by masking, not creating new images
     private applyCrop(): void {
         const selectedElement = this.globalManager.getSelectedElement();
-        if (!selectedElement || selectedElement.type !== 'image' || !this.cropMode) {
+        if (!selectedElement || selectedElement.type !== 'image' || !this.cropMode || !this.cropBounds) {
             return;
         }
         
-        // Apply the crop by creating a new cropped image
-        if (selectedElement.cropX !== undefined && selectedElement.cropY !== undefined &&
-            selectedElement.cropWidth && selectedElement.cropHeight && selectedElement.imageElement) {
+        const cropX = this.cropBounds.left;
+        const cropY = this.cropBounds.top;
+        const cropWidth = this.cropBounds.right - this.cropBounds.left;
+        const cropHeight = this.cropBounds.bottom - this.cropBounds.top;
+        
+        // Store crop bounds to mask the image (hide areas outside crop)
+        if (cropWidth > 0 && cropHeight > 0 && selectedElement.imageElement) {
+            // Just save the crop bounds - image stays same size, but only shows cropped area
+            this.globalManager.updateElement(selectedElement.id, {
+                cropX: cropX,
+                cropY: cropY,
+                cropWidth: cropWidth,
+                cropHeight: cropHeight
+                // Keep original width and height - don't change image size
+            });
             
-            // Create a temporary canvas for cropping
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = selectedElement.cropWidth;
-            tempCanvas.height = selectedElement.cropHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-            
-            if (tempCtx) {
-                // Draw the cropped portion of the image
-                tempCtx.drawImage(
-                    selectedElement.imageElement,
-                    selectedElement.cropX, selectedElement.cropY,
-                    selectedElement.cropWidth, selectedElement.cropHeight,
-                    0, 0,
-                    selectedElement.cropWidth, selectedElement.cropHeight
-                );
-                
-                // Create new image from cropped canvas
-                const newImg = new Image();
-                newImg.onload = () => {
-                    // Update element with cropped image
-                    this.globalManager.updateElement(selectedElement.id, {
-                        imageElement: newImg,
-                        width: selectedElement.cropWidth,
-                        height: selectedElement.cropHeight,
-                        originalWidth: selectedElement.cropWidth,
-                        originalHeight: selectedElement.cropHeight,
-                        cropX: undefined,
-                        cropY: undefined,
-                        cropWidth: undefined,
-                        cropHeight: undefined
-                    });
-                    
-                    // Exit crop mode
-                    this.cropMode = false;
-                    this.canvas.classList.remove('crop-mode');
-                    this.hideCropToolbar();
-                    this.render();
-                };
-                newImg.src = tempCanvas.toDataURL();
-            }
+            // Exit crop mode
+            this.cropMode = false;
+            this.cropBounds = null;
+            this.cropHandle = null;
+            this.canvas.classList.remove('crop-mode');
+            this.hideCropToolbar();
+            this.render();
         }
     }
 }
