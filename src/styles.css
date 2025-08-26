@@ -183,14 +183,21 @@ body {
     flex: 1;
     background: linear-gradient(to br, #f0f4f8, #e2e8f0);
     overflow: auto;
-    padding: 100px; /* Increased padding to prevent edge cutting */
+    padding: 100px;
     position: relative;
+}
+
+.zoom-wrapper {
     display: grid;
-    grid-template-columns: repeat(auto-fill, max-content);
-    grid-template-rows: repeat(auto-fill, max-content);
-    gap: 50px;
-    justify-content: center;
+    grid-template-columns: repeat(20, auto);
+    grid-template-rows: repeat(20, auto);
+    column-gap: 20px; /* Smaller gap for horizontal spacing */
+    row-gap: 40px; /* Normal gap for vertical spacing */
     align-items: center;
+    justify-items: center;
+    transform-origin: top left;
+    width: fit-content;
+    height: fit-content;
 }
 
 /* zoom-wrapper removed - not needed */
@@ -670,16 +677,42 @@ body {
     background: #fc8181;
 }
 
+/* Link button container for dual buttons */
+.link-button-container {
+    display: flex;
+    gap: 3px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 4px;
+    padding: 3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    height: fit-content;
+    z-index: 10;
+}
+
+.link-button-container.right,
+.link-button-container.left {
+    flex-direction: column; /* Vertical layout for horizontal gaps */
+    margin: 0 10px;
+}
+
+.link-button-container.top,
+.link-button-container.bottom {
+    flex-direction: row; /* Horizontal layout for vertical gaps */
+    margin: 10px 0;
+}
+
 .canvas-link-button {
-    position: absolute;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     background: white;
     border: 1px solid #d1d5db;
-    border-radius: 4px;
+    border-radius: 3px;
     cursor: pointer;
     transition: all 0.15s ease;
     z-index: 100;

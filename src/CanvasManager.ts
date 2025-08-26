@@ -62,6 +62,11 @@ export class CanvasManager {
             const customEvent = e as CustomEvent;
             this.render(); // Re-render when linking state changes
         });
+        
+        // Listen for directional link changes
+        document.addEventListener('directional-link-changed', (e) => {
+            this.render(); // Re-render when directional links change
+        });
     }
     
     public getCanvas(): HTMLCanvasElement {
@@ -72,6 +77,21 @@ export class CanvasManager {
         // Check if any link button is active (has 'active' class)
         const linkButtons = document.querySelectorAll('.canvas-link-button');
         return Array.from(linkButtons).some(btn => btn.classList.contains('active'));
+    }
+    
+    // Check if linking is enabled for a specific direction from this canvas
+    private isLinkEnabledForDirection(direction: 'left' | 'right' | 'top' | 'bottom'): boolean {
+        // Get the grid manager to check adjacent canvas and link state
+        const gridManager = (window as any).canvasGridManager;
+        if (!gridManager) return false;
+        
+        const adjacent = gridManager.getAdjacentCanvases(this.canvas.id);
+        const adjacentCanvasId = adjacent.get(direction);
+        
+        if (!adjacentCanvasId) return false;
+        
+        // Check if link is enabled between these canvases
+        return gridManager.areCanvasesLinked(this.canvas.id, adjacentCanvasId);
     }
     
     public setOffset(offsetX: number, offsetY: number): void {
@@ -427,29 +447,37 @@ export class CanvasManager {
             return;
         }
         
-        // Get element at global position
-        const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
+        // Check for resize handles FIRST if we have a selected element
+        const selectedElement = this.globalManager.getSelectedElement();
+        let handle: ResizeHandle | null = null;
         
-        if (element && !this.cropMode) {  // Skip resize check in crop mode
-            const selectedElement = this.globalManager.getSelectedElement();
-            const handle = selectedElement && element.id === selectedElement.id ? 
-                this.getResizeHandle(localPoint, element) : null;
+        if (selectedElement && !this.cropMode) {
+            // Check if clicking on resize handle (even if outside element bounds)
+            handle = this.getResizeHandle(localPoint, selectedElement);
             
             if (handle) {
                 this.resizeState = {
                     isResizing: true,
-                    element: element,
+                    element: selectedElement,
                     handle: handle,
                     startPoint: globalPoint,
                     originalBounds: {
-                        x: element.x,
-                        y: element.y,
-                        width: element.width,
-                        height: element.height,
-                        originalFontSize: element.fontSize
+                        x: selectedElement.x,
+                        y: selectedElement.y,
+                        width: selectedElement.width,
+                        height: selectedElement.height,
+                        originalFontSize: selectedElement.fontSize
                     } as any
                 };
-            } else {
+                return; // Stop here if we're starting a resize
+            }
+        }
+        
+        // If not resizing, check for element selection
+        const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
+        
+        if (element && !this.cropMode) {
+            if (!handle) {  // Only process selection if not resizing
                 // Check if Shift or Cmd/Ctrl is held for multi-selection
                 if (e.shiftKey || e.metaKey || e.ctrlKey) {
                     // Toggle selection
@@ -765,11 +793,20 @@ export class CanvasManager {
                     }
                 } else {
                     // Normal mode - check for resize handles
-                    const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
                     const selectedElement = this.globalManager.getSelectedElement();
-                    const handle = selectedElement && element && element.id === selectedElement.id ? 
-                        this.getResizeHandle(localPoint, element) : null;
-                    this.canvas.style.cursor = handle ? this.getCursorForHandle(handle) : 'default';
+                    
+                    // First check if we're over a resize handle (even if outside element bounds)
+                    if (selectedElement) {
+                        const handle = this.getResizeHandle(localPoint, selectedElement);
+                        if (handle) {
+                            this.canvas.style.cursor = this.getCursorForHandle(handle);
+                            return;
+                        }
+                    }
+                    
+                    // If not over a handle, check if over an element
+                    const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
+                    this.canvas.style.cursor = element ? 'move' : 'default';
                 }
             }
             return;
@@ -853,11 +890,20 @@ export class CanvasManager {
             // Trigger re-render on all canvases
             document.dispatchEvent(new CustomEvent('element-moved'));
         } else {
-            const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
+            // Check for resize handles first
             const selectedElement = this.globalManager.getSelectedElement();
-            const handle = selectedElement && element && element.id === selectedElement.id ? 
-                this.getResizeHandle(localPoint, element) : null;
-            this.canvas.style.cursor = handle ? this.getCursorForHandle(handle) : 'default';
+            if (selectedElement) {
+                const handle = this.getResizeHandle(localPoint, selectedElement);
+                if (handle) {
+                    this.canvas.style.cursor = this.getCursorForHandle(handle);
+                    this.render();
+                    return;
+                }
+            }
+            
+            // Then check if over an element
+            const element = this.globalManager.getElementAtPoint(globalPoint.x, globalPoint.y);
+            this.canvas.style.cursor = element ? 'move' : 'default';
         }
         
         this.render();
@@ -979,7 +1025,8 @@ export class CanvasManager {
         
         // Convert element global position to local for handle calculation
         const localPos = this.globalToLocal(element.x, element.y);
-        const handleSize = 8 / this.scale;
+        // Increased detection area to 20 pixels for easier clicking
+        const handleSize = 20 / this.scale;
         const handles: { handle: ResizeHandle; x: number; y: number }[] = [
             { handle: 'nw', x: localPos.x, y: localPos.y },
             { handle: 'n', x: localPos.x + element.width / 2, y: localPos.y },
@@ -992,8 +1039,12 @@ export class CanvasManager {
         ];
         
         for (const h of handles) {
-            if (Math.abs(localPoint.x - h.x) <= handleSize && 
-                Math.abs(localPoint.y - h.y) <= handleSize) {
+            // Calculate distance from point to handle center (circular detection)
+            const distance = Math.sqrt(
+                Math.pow(localPoint.x - h.x, 2) + 
+                Math.pow(localPoint.y - h.y, 2)
+            );
+            if (distance <= handleSize) {
                 return h.handle;
             }
         }
@@ -1889,12 +1940,21 @@ export class CanvasManager {
         
         // Render each visible element
         for (const element of visibleElements) {
-            // If linking is disabled, only render elements that belong to this canvas
-            // or elements being dragged (to allow partial visibility)
-            if (!this.isLinkingEnabled() && element.canvasId !== this.canvas.id) {
-                // Skip elements from other canvases unless they're being dragged
-                if (!this.dragState.isDragging || this.dragState.element?.id !== element.id) {
-                    continue;
+            // Check if element should be rendered based on directional link states
+            if (element.canvasId && element.canvasId !== this.canvas.id) {
+                // Element is from another canvas - check directional link
+                const multiCanvasManager = (window as any).multiCanvasManager;
+                if (multiCanvasManager) {
+                    // Check if the directional link from element's canvas to this canvas is enabled
+                    const isLinkEnabled = multiCanvasManager.isDirectionalLinkEnabled(element.canvasId, this.canvas.id);
+                    
+                    if (!isLinkEnabled) {
+                        // Skip rendering if link is disabled
+                        // Exception: allow rendering if this element is being dragged
+                        if (!this.dragState.isDragging || this.dragState.element?.id !== element.id) {
+                            continue;
+                        }
+                    }
                 }
             }
             
@@ -2300,8 +2360,9 @@ export class CanvasManager {
         this.ctx.lineWidth = 1;
         
         handles.forEach(handle => {
-            this.ctx.fillRect(handle.x - 4, handle.y - 4, 8, 8);
-            this.ctx.strokeRect(handle.x - 4, handle.y - 4, 8, 8);
+            // Draw the handle (12x12 pixels)
+            this.ctx.fillRect(handle.x - 6, handle.y - 6, 12, 12);
+            this.ctx.strokeRect(handle.x - 6, handle.y - 6, 12, 12);
         });
     }
     

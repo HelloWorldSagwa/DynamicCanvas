@@ -118,6 +118,13 @@ export class CanvasGridManager {
         return newState;
     }
     
+    // Set link state directly
+    public setLinkState(canvas1: string, canvas2: string, enabled: boolean): void {
+        const key = this.getLinkKey(canvas1, canvas2);
+        this.linkStates.set(key, enabled);
+        console.log(`[GRID] Link between ${canvas1} and ${canvas2} set to: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    }
+    
     // Check if two canvases are linked
     public areCanvasesLinked(canvas1: string, canvas2: string): boolean {
         const key = this.getLinkKey(canvas1, canvas2);
