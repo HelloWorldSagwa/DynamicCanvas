@@ -8,6 +8,7 @@ export class CanvasManager {
     private offsetX: number = 0;  // Canvas offset in global coordinate system
     private offsetY: number = 0;
     private scale: number = 1;
+    private zoomLevel: number = 1;  // Global zoom level from MultiCanvasManager
     // Linking state is tracked by checking link button status
     // private editingElementId: string | null = null; // Removed - not needed anymore  // Track element being edited
     private cropMode: boolean = false;  // Track crop mode
@@ -134,6 +135,10 @@ export class CanvasManager {
         
         // Re-render with new resolution
         this.render();
+    }
+    
+    public setZoomLevel(zoom: number): void {
+        this.zoomLevel = zoom;
     }
     
     private updateCanvasDisplaySize(): void {
@@ -814,8 +819,8 @@ export class CanvasManager {
         
         const rect = this.canvas.getBoundingClientRect();
         const currentLocalPoint = {
-            x: (e.clientX - rect.left) / this.scale,
-            y: (e.clientY - rect.top) / this.scale
+            x: (e.clientX - rect.left) / (this.scale * this.zoomLevel),
+            y: (e.clientY - rect.top) / (this.scale * this.zoomLevel)
         };
         const currentGlobalPoint = this.localToGlobal(currentLocalPoint.x, currentLocalPoint.y);
         
@@ -1822,8 +1827,8 @@ export class CanvasManager {
 
     private getMousePosition(e: MouseEvent): Point {
         const rect = this.canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) / this.scale;
-        const y = (e.clientY - rect.top) / this.scale;
+        const x = (e.clientX - rect.left) / (this.scale * this.zoomLevel);
+        const y = (e.clientY - rect.top) / (this.scale * this.zoomLevel);
         return { x, y };
     }
 

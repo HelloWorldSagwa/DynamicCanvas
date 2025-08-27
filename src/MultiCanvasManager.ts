@@ -247,6 +247,7 @@ export class MultiCanvasManager {
         
         // NOW create CanvasManager instance after canvas is in the DOM
         const canvasManager = new CanvasManager(canvasId, this.globalElementManager, offsetX, offsetY);
+        canvasManager.setZoomLevel(this.currentZoom);
         this.canvases.set(canvasId, canvasManager);
         
         // Create link buttons AFTER canvas is added
@@ -500,8 +501,9 @@ export class MultiCanvasManager {
         zoomWrapper.style.transform = `scale(${this.currentZoom})`;
         zoomWrapper.style.transformOrigin = 'top left';
         
-        // Re-render all canvases
+        // Update zoom level in all canvas managers and re-render
         this.canvases.forEach((canvasManager) => {
+            canvasManager.setZoomLevel(this.currentZoom);
             canvasManager.render();
         });
     }
